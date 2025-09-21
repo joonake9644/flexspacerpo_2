@@ -1,9 +1,10 @@
-﻿import React, { useMemo, useState, useCallback, memo } from 'react'
+import React, { useMemo, useState, useCallback, memo } from 'react'
 import { User, Booking, Facility, CreateBookingData } from '@/types'
 import { useFirestore } from '../hooks/use-firestore'
 import { useNotification } from '../hooks/use-notification'
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '@/utils/firebase-functions'
+import { NumberInput } from './NumberInput'
 
 const createBookingCallable = httpsCallable(functions, 'createBooking')
 
@@ -168,7 +169,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings }
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">인원</label>
-              <input type="number" min={1} className="w-full p-3 border border-gray-200 rounded-xl" value={form.numberOfParticipants||1} onChange={e=>setForm({...form, numberOfParticipants: parseInt(e.target.value)||1})} />
+              <NumberInput value={form.numberOfParticipants||1} onChange={val=>setForm({...form, numberOfParticipants: val})} />
             </div>
             <div className="flex items-end">
               <button type="submit" disabled={submitting} className="w-full md:w-auto px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium">대관 신청</button>

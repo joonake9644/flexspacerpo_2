@@ -1,15 +1,16 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
 import { Users, Mail, Lock, User as UserIcon, Phone } from 'lucide-react'
 import { User } from '../types'
 import { sendPasswordResetEmail } from 'firebase/auth'
 import { auth } from '@/firebase'
+import { useNotification } from '@/hooks/use-notification'
 
 type LoginMode = 'login' | 'signup' | 'admin_login'
 
 interface LoginFormProps {
-  onLogin: (email: string, password: string) => Promise<boolean>
-  onSignup: (newUser: Omit<User, 'id' | 'role'> & { password?: string }) => Promise<boolean>
-  onAdminLogin: (email: string, password: string) => Promise<boolean>
+  onLogin: (email: string, password: string) => Promise<[boolean, string | null]>
+  onSignup: (newUser: Omit<User, 'id' | 'role'> & { password?: string }) => Promise<[boolean, string | null]>
+  onAdminLogin: (email: string, password: string) => Promise<[boolean, string | null]>
 }
 
 interface ForgotPasswordModalProps {
@@ -36,10 +37,10 @@ const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ email, setEma
   </div>
 )
 
-interface PrivacyAgreementModalProps { onConfirm: () => void; onCancel: () => void }
+interface PrivacyAgreementModalProps { onConfirm: () => void; onCancel: () => void; errorText?: string; }
 
-const PrivacyAgreementModal: React.FC<PrivacyAgreementModalProps> = ({ onConfirm, onCancel }) => (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
+const PrivacyAgreementModal: React.FC<PrivacyAgreementModalProps> = ({ onConfirm, onCancel, errorText }) => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
     <div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4">
       <h3 id="agreement-title" className="text-xl font-bold text-gray-900 mb-4">개인정보 수집 및 이용 동의</h3>
       <p className="text-sm text-gray-600 mb-6">FlexSpace Pro 서비스 제공을 위해 아래와 같이 개인정보를 수집 및 이용합니다.</p>
@@ -71,6 +72,7 @@ const PrivacyAgreementModal: React.FC<PrivacyAgreementModalProps> = ({ onConfirm
       </div>
       <p className="text-xs text-gray-500 mt-4">※ 선택 항목을 동의하지 않아도 회원가입 및 기본 서비스 이용이 가능합니다. 단, 해당 정보가 필요한 일부 서비스(예: 대관 알림) 이용에 제한이 있을 수 있습니다.</p>
       <p className="text-xs text-gray-600 mt-2 font-medium">필수 항목에 동의하지 않으면 회원가입이 제한됩니다.</p>
+      {errorText && <p className="text-sm text-red-600 mt-4 text-right">{errorText}</p>}
       <div className="flex justify-end gap-3 mt-6">
         <button onClick={onCancel} className="px-4 py-2 rounded-xl border">취소</button>
         <button onClick={onConfirm} className="px-4 py-2 rounded-xl bg-blue-600 text-white">동의하고 계속하기</button>
@@ -80,6 +82,7 @@ const PrivacyAgreementModal: React.FC<PrivacyAgreementModalProps> = ({ onConfirm
 )
 
 const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }) => {
+  const { showNotification } = useNotification()
   const [mode, setMode] = useState<LoginMode>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -102,8 +105,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }
     const rawPhone = phone.replace(/-/g, '')
     setSubmitting(true); setErrorText('')
     try {
-      const ok = await onSignup({ name, email, password, phone: rawPhone })
-      if (!ok) setErrorText('회원가입에 실패했습니다. 입력 정보를 확인해주세요.')
+      const [ok, errorMessage] = await onSignup({ name, email, password, phone: rawPhone })
+      if (!ok) setErrorText(errorMessage || '회원가입에 실패했습니다. 입력 정보를 확인해주세요.')
       else setIsAgreementModalOpen(false)
     } finally {
       setSubmitting(false)
@@ -112,17 +115,36 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrorText('')
+
+    if (mode === 'signup') {
+      if (!name.trim()) {
+        showNotification('이름을 입력해주세요.', 'error');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showNotification('유효하지 않은 이메일 형식입니다.', 'error');
+        return;
+      }
+      if (password.length < 6) {
+        showNotification('비밀번호는 6자 이상이어야 합니다.', 'error');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showNotification('비밀번호가 일치하지 않습니다.', 'error');
+        return;
+      }
+    }
+
     setSubmitting(true)
     try {
       if (mode === 'login') {
-        const ok = await onLogin(email, password)
-        if (!ok) setErrorText('로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.')
+        const [ok, error] = await onLogin(email, password)
+        if (!ok) showNotification(error || '로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.', 'error')
       } else if (mode === 'admin_login') {
-        const ok = await onAdminLogin(email, password)
-        if (!ok) setErrorText('관리자 로그인에 실패했습니다. 자격을 확인해주세요.')
-      } else {
-        if (password !== confirmPassword) { setErrorText('비밀번호가 일치하지 않습니다.'); return }
+        const [ok, error] = await onAdminLogin(email, password)
+        if (!ok) showNotification(error || '관리자 로그인에 실패했습니다. 자격을 확인해주세요.', 'error')
+      } else { // mode === 'signup'
         setIsAgreementModalOpen(true)
       }
     } finally {
@@ -141,7 +163,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
         <div className="flex items-center mb-6">
-          <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center mr-2"><Users className="w-6 h-6 text-white"/></div>
+          <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center mr-2"><Users className="w-6 h-6 text-white" /></div>
           <h1 className="text-2xl font-bold text-gray-900">FlexSpace Pro</h1>
         </div>
 
@@ -195,7 +217,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }
             </>
           )}
 
-          {errorText && <p className="text-sm text-red-600 mb-3">{errorText}</p>}
+          
 
           <button type="submit" disabled={submitting} className="w-full py-3 px-4 bg-blue-500 text-white rounded-xl border-2 border-transparent hover:bg-blue-600 hover:border-blue-700 transition-all font-semibold">
             {mode==='login' && '로그인 / Login'}
@@ -205,7 +227,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin }
         </form>
       </div>
 
-      {isAgreementModalOpen && <PrivacyAgreementModal onConfirm={handleConfirmSignup} onCancel={()=>setIsAgreementModalOpen(false)} />}
+      {isAgreementModalOpen && <PrivacyAgreementModal onConfirm={handleConfirmSignup} onCancel={()=>setIsAgreementModalOpen(false)} errorText={errorText} />}
       {isForgotPasswordModalOpen && <ForgotPasswordModal email={resetEmail} setEmail={setResetEmail} onSendLink={handleSendReset} onCancel={()=>setIsForgotPasswordModalOpen(false)} />}
     </div>
   )

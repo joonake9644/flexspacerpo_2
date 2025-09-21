@@ -35,33 +35,36 @@ export default function Home() {
     }
   }, [currentUser, loading])
 
-  const handleLogin = async (email: string, password: string): Promise<boolean> => {
+  const handleLogin = async (email: string, password: string): Promise<[boolean, string | null]> => {
     try {
       await login(email, password)
-      return true
+      return [true, null]
     } catch (error) {
       console.error('Login failed:', error)
-      return false
+      const message = error instanceof Error ? error.message : String(error)
+      return [false, message]
     }
   }
 
-  const handleAdminLogin = async (email: string, password: string): Promise<boolean> => {
+  const handleAdminLogin = async (email: string, password: string): Promise<[boolean, string | null]> => {
     try {
       await adminLogin(email, password)
-      return true
+      return [true, null]
     } catch (error) {
       console.error('Admin login failed:', error)
-      return false
+      const message = error instanceof Error ? error.message : String(error)
+      return [false, message]
     }
   }
 
-  const handleSignup = async (userData: Omit<User, 'id' | 'role'> & { password?: string }): Promise<boolean> => {
+  const handleSignup = async (userData: Omit<User, 'id' | 'role'> & { password?: string }): Promise<[boolean, string | null]> => {
     try {
       await signup(userData)
-      return true
+      return [true, null]
     } catch (error) {
       console.error('Signup failed:', error)
-      return false
+      const message = error instanceof Error ? error.message : String(error)
+      return [false, message]
     }
   }
 
@@ -140,23 +143,21 @@ export default function Home() {
     )
   }
 
-  // 로그인하지 않은 경우
-  if (!currentUser) {
-    return <LoginForm onLogin={handleLogin} onSignup={handleSignup} onAdminLogin={handleAdminLogin} />
-  }
-
-  // 로그인한 경우
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
       <NotificationContainer />
-      <Suspense fallback={<div className="p-4">로딩 중...</div>}>
-        <Navigation currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
-        <main>
-          <Suspense fallback={<div className="p-6">콘텐츠 로딩 중...</div>}>
-            {renderContent()}
-          </Suspense>
-        </main>
+      <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div></div>}>
+        {!currentUser ? (
+          <LoginForm onLogin={handleLogin} onSignup={handleSignup} onAdminLogin={handleAdminLogin} />
+        ) : (
+          <div className="min-h-screen bg-gray-50">
+            <Navigation currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+            <main>
+              {renderContent()}
+            </main>
+          </div>
+        )}
       </Suspense>
-    </div>
+    </>
   )
 }
