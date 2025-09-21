@@ -1,0 +1,22 @@
+## FlexSpace Pro - 전역 예약 규칙 (Global Booking Rules)
+
+### 1. 주말 최소 예약 시간 (Weekend Minimum Booking Time)
+- **규칙 ID**: `weekend-min-2-hours`
+- **설명**: 주말(토, 일)에 시설을 대관하는 경우, 최소 2시간 이상을 예약해야 합니다.
+- **적용 대상**: 모든 시설
+- **조건**: `booking.day in ['Saturday', 'Sunday']`
+- **검증 로직**: `booking.duration >= 120` (분 단위)
+
+### 2. 프라임 타임 예약 제한 (Prime Time Booking Restriction)
+- **규칙 ID**: `prime-time-limit`
+- **설명**: 프라임 타임(평일 18:00 ~ 22:00)에는 일반 사용자의 예약을 제한합니다. (예: 프리미엄 회원만 가능)
+- **적용 대상**: 모든 시설
+- **조건**: `booking.day not in ['Saturday', 'Sunday'] and booking.startTime >= '18:00' and booking.endTime <= '22:00'`
+- **검증 로직**: `user.grade == 'premium'`
+
+### 3. 1인당 최대 예약 가능 횟수 (Max Bookings per User)
+- **규칙 ID**: `max-bookings-per-user`
+- **설명**: 한 사용자는 일주일에 최대 3번까지만 '승인 대기' 또는 '승인됨' 상태의 예약을 가질 수 있습니다.
+- **적용 대상**: 모든 사용자, 모든 시설
+- **조건**: `user.activeBookings.count >= 3`
+- **검증 로직**: 신규 예약 요청 거부

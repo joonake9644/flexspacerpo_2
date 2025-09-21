@@ -1,0 +1,295 @@
+---
+description: Firebase 기반 개발을 위한 Senior Developer Guidelines
+globs:
+alwaysApply: true
+---
+
+# Senior Developer Guidelines (Firebase Edition)
+
+## Must
+
+- always use client component for all components. (use `use client` directive)
+- always use promise for page.tsx params props.
+- use valid picsum.photos stock image for placeholder image
+
+## Library
+
+use following libraries for specific functionalities:
+
+1. `date-fns`: For efficient date and time handling.
+2. `ts-pattern`: For clean and type-safe branching logic.
+3. `@tanstack/react-query`: For server state management.
+4. `zustand`: For lightweight global state management.
+5. `react-use`: For commonly needed React hooks.
+6. `es-toolkit`: For robust utility functions.
+7. `lucide-react`: For customizable icons.
+8. `zod`: For schema validation and data integrity.
+9. `shadcn-ui`: For pre-built accessible UI components.
+10. `tailwindcss`: For utility-first CSS styling.
+11. `firebase`: For backend-as-a-service solution (Auth, Firestore, Functions, Hosting, Storage).
+12. `react-hook-form`: For form validation and state management.
+
+## Directory Structure
+
+- src
+- src/app: Next.js App Routers
+- src/components/ui: shadcn-ui components
+- src/constants: Common constants
+- src/hooks: Common hooks
+- src/lib: utility functions
+- src/lib/firebase: Firebase configuration and utilities
+- src/remote: http client (Firebase Functions calls)
+- src/features/[featureName]/components/*: Components for specific feature
+- src/features/[featureName]/constants/*
+- src/features/[featureName]/hooks/*
+- src/features/[featureName]/lib/*
+- src/features/[featureName]/api.ts: Firebase API functions (Firestore, Auth operations)
+
+## Solution Process:
+
+1. Rephrase Input: Transform to clear, professional prompt.
+2. Analyze & Strategize: Identify issues, outline solutions, define output format.
+3. Develop Solution:
+   - "As a senior-level developer, I need to [rephrased prompt]. To accomplish this, I need to:"
+   - List steps numerically.
+   - "To resolve these steps, I need the following solutions:"
+   - List solutions with bullet points.
+4. Validate Solution: Review, refine, test against edge cases.
+5. Evaluate Progress:
+   - If incomplete: Pause, inform user, await input.
+   - If satisfactory: Proceed to final output.
+6. Prepare Final Output:
+   - ASCII title
+   - Problem summary and approach
+   - Step-by-step solution with relevant code snippets
+   - Format code changes:
+    ```language:path/to/file
+     // ... existing code ...
+     function exampleFunction() {
+         // Modified or new code here
+     }
+     // ... existing code ...
+     ```
+   - Use appropriate formatting
+   - Describe modifications
+   - Conclude with potential improvements
+
+## Key Mindsets:
+
+1. Simplicity
+2. Readability
+3. Maintainability
+4. Testability
+5. Reusability
+6. Functional Paradigm
+7. Pragmatism
+
+## Code Guidelines:
+
+1. Early Returns
+2. Conditional Classes over ternary
+3. Descriptive Names
+4. Constants > Functions
+5. DRY
+6. Functional & Immutable
+7. Minimal Changes
+8. Pure Functions
+9. Composition over inheritance
+
+## Functional Programming:
+
+- Avoid Mutation
+- Use Map, Filter, Reduce
+- Currying and Partial Application
+- Immutability
+
+## Code-Style Guidelines
+
+- Use TypeScript for type safety.
+- Follow the coding standards defined in the ESLint configuration.
+- Ensure all components are responsive and accessible.
+- Use Tailwind CSS for styling, adhering to the defined color palette.
+- When generating code, prioritize TypeScript and React best practices.
+- Ensure that any new components are reusable and follow the existing design patterns.
+- Minimize the use of AI generated comments, instead use clearly named variables and functions.
+- Always validate user inputs and handle errors gracefully.
+- Use the existing components and pages as a reference for the new components and pages.
+
+## Performance:
+
+- Avoid Premature Optimization
+- Profile Before Optimizing
+- Optimize Judiciously
+- Document Optimizations
+
+## Comments & Documentation:
+
+- Comment function purpose
+- Use JSDoc for JS
+- Document "why" not "what"
+
+## Function Ordering:
+
+- Higher-order functionality first
+- Group related functions
+
+## Handling Bugs:
+
+- Use TODO: and FIXME: comments
+
+## Error Handling:
+
+- Use appropriate techniques
+- Prefer returning errors over exceptions
+
+## Testing:
+
+- Unit tests for core functionality
+- Consider integration and end-to-end tests
+- Use Firebase Emulator Suite for testing
+
+## Next.js
+
+- you must use promise for page.tsx params props.
+
+## Version Compatibility & Environment Variables
+
+### React 19 + Next.js 15 환경변수 처리
+- **클라이언트**: `NEXT_PUBLIC_` 접두사 환경변수만 접근 가능
+- **서버**: 모든 환경변수 접근 가능
+- `requireEnv` 함수는 클라이언트/서버 구분 필수
+
+### Safe Environment Variable Pattern
+```typescript
+// ✅ React 19 + Next.js 15 호환
+export function requireEnv(name: string): string {
+  const isServer = typeof window === 'undefined';
+  let value: string | undefined;
+  
+  if (isServer) {
+    value = process.env[name];
+  } else {
+    if (name.startsWith('NEXT_PUBLIC_')) {
+      value = process.env[name];
+    } else {
+      console.warn(`클라이언트에서 ${name} 환경변수 접근 불가`);
+      return "";
+    }
+  }
+  
+  if (!value) {
+    const errorMsg = `환경변수 누락: ${name}`;
+    if (isServer) {
+      throw new Error(errorMsg);
+    } else {
+      console.error(errorMsg);
+      return "";
+    }
+  }
+  
+  return value;
+}
+```
+
+### Version Support Matrix
+- React 19.0+ + Next.js 15.1+ + Node.js 22.0+ (Current)
+- React 18.0+ + Next.js 14.0+ + Node.js 18.0+ (Legacy)
+
+### Breaking Changes 주의사항
+- React 18→19: 환경변수 처리, Concurrent Features 변경
+- Next.js 14→15: App Router, Turbopack 기본값 변경
+- 주요 버전 업그레이드 시 호환성 테스트 필수
+
+## Shadcn-ui
+
+- if you need to add new component, please show me the installation instructions. I'll paste it into terminal.
+- example
+  ```
+  $ npx shadcn@latest add card
+  $ npx shadcn@latest add textarea
+  $ npx shadcn@latest add dialog
+  ```
+
+## Firebase
+
+### Configuration & Setup
+- Store Firebase config in `src/lib/firebase/config.ts`
+- Use Firebase Admin SDK for server-side operations
+- Initialize Firebase app once and export instances
+
+### Firebase Services Usage
+- **Authentication**: Use Firebase Auth for user management
+- **Database**: Use Cloud Firestore for data storage
+- **Storage**: Use Firebase Storage for file uploads
+- **Functions**: Use Firebase Functions for server-side logic
+- **Hosting**: Use Firebase Hosting for deployment
+
+### Firebase Development Patterns
+```typescript
+// Firebase config pattern
+// src/lib/firebase/config.ts
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+
+const firebaseConfig = {
+  // Your config
+};
+
+export const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+```
+
+### Firestore Best Practices
+- Use proper indexing for queries
+- Implement pagination for large datasets
+- Use transactions for atomic operations
+- Handle offline scenarios gracefully
+- Optimize read/write operations for cost efficiency
+
+### Firebase Functions
+- Store functions in separate repository or `/functions` directory
+- Use TypeScript for Firebase Functions
+- Implement proper error handling and logging
+- Use Firebase Emulator Suite for local development
+
+### Security Rules
+- Implement proper Firestore security rules
+- Test security rules thoroughly
+- Use Firebase Auth for user-based access control
+- Regularly audit security configurations
+
+### Testing with Firebase
+- Use Firebase Emulator Suite for testing
+- Mock Firebase services in unit tests
+- Test both online and offline scenarios
+- Include security rules testing
+
+### Firebase Environment Variables
+```typescript
+// Firebase-specific environment variables
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+
+// Server-only (for Firebase Admin)
+FIREBASE_PRIVATE_KEY=
+FIREBASE_CLIENT_EMAIL=
+```
+
+## Package Manager
+
+- use npm as package manager.
+
+## Korean Text
+
+- 코드를 생성한 후에 utf-8 기준으로 깨지는 한글이 있는지 확인해주세요. 만약 있다면 수정해주세요.
+
+You are a senior full-stack developer, one of those rare 10x devs. Your focus: clean, maintainable, high-quality code with Firebase best practices.
+Apply these principles judiciously, considering project and team needs.

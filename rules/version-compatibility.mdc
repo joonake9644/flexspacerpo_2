@@ -1,0 +1,428 @@
+# Version Compatibility & Environment Variables Guidelines
+
+# Version Compatibility & Environment Variables Guidelines (Firebase Edition)
+
+## Must
+
+### React + Next.js Version Compatibility
+- **React 19.0+ + Next.js 15.0+**: 클라이언트 사이드 환경변수 처리 방식이 변경됨
+- 클라이언트에서는 `NEXT_PUBLIC_` 접두사가 있는 환경변수만 접근 가능
+- 서버에서는 모든 환경변수 접근 가능
+- `requireEnv` 같은 유틸리티 함수는 클라이언트/서버 구분 필수
+
+### Firebase SDK Version Compatibility
+- **Firebase v10+**: Modular SDK 필수 사용 (tree-shaking 지원)
+- **Firebase Admin SDK v12+**: Node.js 18+ 필수
+- **Firebase Functions SDK v5+**: TypeScript 5.0+ 권장
+
+### Environment Variables Best Practices
+- **Client-side**: `NEXT_PUBLIC_` 접두사 필수
+  ```typescript
+  // ✅ 올바른 방법 - Firebase 클라이언트 설정
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  
+  // ❌ 잘못된 방법 (React 19+ Next.js 15+에서 오류)
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY; // 클라이언트에서 접근 불가
+  ```
+
+- **Server-side**: 모든 환경변수 접근 가능
+  ```typescript
+  // ✅ 서버에서는 모든 환경변수 접근 가능 (Firebase Admin SDK용)
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  ```
+
+### Safe Environment Variable Utilities (Firebase Enhanced)
+```typescript
+// ✅ React 19 + Next.js 15 + Firebase 호환 버전
+export function requireEnv(name: string): string {
+  const isServer = typeof window === 'undefined';
+  let value: string | undefined;
+  
+  if (isServer) {
+    // 서버에서는 모든 환경변수 접근 가능
+    value = process.env[name];
+  } else {
+    // 클라이언트에서는 NEXT_PUBLIC_ 환경변수만 접근 가능
+    if (name.startsWith('NEXT_PUBLIC_')) {
+      value = process.env[name];
+    } else {
+      console.warn(`클라이언트에서 ${name} 환경변수에 접근할 수 없습니다.`);
+      return "";
+    }
+  }
+  
+  if (!value || value.length === 0) {
+    const errorMsg = `환경변수 누락: ${name}`;
+    if (isServer) {
+      throw new Error(errorMsg);
+    } else {
+      console.error(errorMsg);
+      return "";
+    }
+  }
+  
+  return value;
+}
+
+// Firebase 특화 환경변수 검증
+export function validateFirebaseConfig() {
+  const requiredClientVars = [
+    'NEXT_PUBLIC_FIREBASE_API_KEY',
+    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
+    'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
+    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
+    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
+    'NEXT_PUBLIC_FIREBASE_APP_ID'
+  ];
+
+  const requiredServerVars = [
+    'FIREBASE_PRIVATE_KEY',
+    'FIREBASE_CLIENT_EMAIL'
+  ];
+
+  const isServer = typeof window === 'undefined';
+  const varsToCheck = isServer ? [...requiredClientVars, ...requiredServerVars] : requiredClientVars;
+
+  const missing = varsToCheck.filter(varName => !process.env[varName]);
+  
+  if (missing.length > 0) {
+    const context = isServer ? 'server' : 'client';
+    throw new Error(`Firebase 환경변수 누락 (${context}): ${missing.join(', ')}`);
+  }
+}
+```
+
+### Firebase Client Initialization
+```typescript
+// ✅ React 19 + Firebase v10+ 호환 클라이언트 설정
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getMessaging, isSupported } from 'firebase/messaging';
+
+const firebaseConfig = {
+  apiKey: requireEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: requireEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: requireEnv('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: requireEnv('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: requireEnv('NEXT_PUBLIC_FIREBASE_APP_ID')
+};
+
+// Firebase 앱 초기화
+export const app = initializeApp(firebaseConfig);
+
+// Firebase 서비스 인스턴스
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+// 조건부 메시징 초기화 (서비스 워커 지원 확인)
+export const getMessagingInstance = async () => {
+  if (typeof window !== 'undefined' && await isSupported()) {
+    return getMessaging(app);
+  }
+  return null;
+};
+```
+
+### Firebase Admin SDK Initialization (Server-side)
+```typescript
+// ✅ Firebase Admin SDK 초기화 (서버 전용)
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+
+export function getFirebaseAdmin() {
+  if (getApps().length > 0) {
+    return getApps()[0];
+  }
+
+  const privateKey = requireEnv('FIREBASE_PRIVATE_KEY').replace(/\\n/g, '\n');
+  const clientEmail = requireEnv('FIREBASE_CLIENT_EMAIL');
+  const projectId = requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
+
+  return initializeApp({
+    credential: cert({
+      privateKey,
+      clientEmail,
+      projectId,
+    }),
+    projectId,
+  });
+}
+
+export const adminDb = getFirestore(getFirebaseAdmin());
+export const adminAuth = getAuth(getFirebaseAdmin());
+```
+
+## Should
+
+### Version Pinning Strategy
+- **Critical Dependencies**: 정확한 버전 지정
+  ```json
+  {
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "firebase": "10.14.0",
+    "firebase-admin": "12.5.0"
+  }
+  ```
+
+- **Minor Dependencies**: 호환 범위 지정
+  ```json
+  {
+    "zod": "^3",
+    "date-fns": "^4",
+    "@tanstack/react-query": "^5"
+  }
+  ```
+
+### Breaking Changes 대응
+- **React 18 → 19**: 환경변수 처리, Concurrent Features, Suspense 변경사항
+- **Next.js 14 → 15**: App Router 변경사항, Turbopack 기본값, 서버 컴포넌트 개선
+- **Firebase v9 → v10+**: Modular SDK 완전 전환, 레거시 API 제거
+- **Firebase Functions v4 → v5**: Node.js 18+ 필수, TypeScript 5.0+ 지원
+- 주요 버전 업그레이드 시 Firebase Emulator Suite로 호환성 테스트 필수
+
+### Environment Variables Naming Convention
+
+#### Firebase Client Environment Variables (Public)
+```bash
+# Firebase 프로젝트 설정
+NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=app_id
+
+# 추가 설정
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX # Google Analytics 4 (선택사항)
+NEXT_PUBLIC_ENVIRONMENT=development # 환경 구분
+```
+
+#### Firebase Server Environment Variables (Private)
+```bash
+# Firebase Admin SDK 설정
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nkey_content\n-----END PRIVATE KEY-----\n"
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@project.iam.gserviceaccount.com
+
+# Firebase Functions 배포용
+FIREBASE_TOKEN=your_ci_token # CI/CD용
+
+# 외부 서비스 연동
+SMTP_HOST=smtp.gmail.com # 이메일 발송용
+SMTP_PORT=587
+SMTP_USER=your_email@domain.com
+SMTP_PASS=app_password
+```
+
+## Error Prevention
+
+### Common Firebase Compatibility Issues
+1. **Firebase 환경변수 접근 오류**: `Firebase 환경변수 누락: NEXT_PUBLIC_FIREBASE_*`
+   - 해결: 클라이언트/서버 구분하여 Firebase 설정 분리
+
+2. **Firebase Admin SDK 중복 초기화**: `Firebase app named '[DEFAULT]' already exists`
+   - 해결: `getApps()` 길이 확인 후 조건부 초기화
+
+3. **Firestore 오프라인 지속성 충돌**: Next.js SSR과 Firebase 오프라인 캐시 충돌
+   - 해결: 클라이언트에서만 오프라인 지속성 활성화
+
+4. **Firebase Functions Cold Start**: 첫 요청 시 지연 발생
+   - 해결: Keep-alive 요청 또는 최소 인스턴스 설정
+
+5. **Firebase Authentication SSR 불일치**: 서버/클라이언트 인증 상태 불일치
+   - 해결: `onAuthStateChanged` 리스너와 쿠키 기반 인증 상태 동기화
+
+### Firebase-Specific Testing Strategy
+```typescript
+// Firebase Emulator Suite 설정
+export function setupFirebaseEmulators() {
+  if (process.env.NODE_ENV === 'test') {
+    // Firestore 에뮬레이터 연결
+    connectFirestoreEmulator(db, 'localhost', 8080);
+    
+    // Auth 에뮬레이터 연결
+    connectAuthEmulator(auth, 'http://localhost:9099');
+    
+    // Storage 에뮬레이터 연결
+    connectStorageEmulator(storage, 'localhost', 9199);
+  }
+}
+
+// 환경변수 로딩 테스트
+describe('Firebase Configuration', () => {
+  it('should load all required client environment variables', () => {
+    expect(() => validateFirebaseConfig()).not.toThrow();
+  });
+  
+  it('should initialize Firebase app correctly', () => {
+    expect(app.name).toBe('[DEFAULT]');
+    expect(app.options.projectId).toBeDefined();
+  });
+});
+```
+
+### Firebase Security Best Practices
+```typescript
+// ✅ Firestore 보안 규칙 환경별 분리
+// firestore.rules (production)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /reservations/{document} {
+      allow read, write: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+  }
+}
+
+// firestore.rules.dev (development)  
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    allow read, write: if true; // 개발 환경에서만 모든 접근 허용
+  }
+}
+```
+
+## Monitoring
+
+### Firebase 특화 모니터링
+```typescript
+// Firebase Performance Monitoring 설정
+import { getPerformance, trace } from 'firebase/performance';
+
+export function initializePerformanceMonitoring() {
+  if (typeof window !== 'undefined') {
+    const perf = getPerformance(app);
+    
+    // 커스텀 트레이스
+    const reservationTrace = trace(perf, 'reservation_creation');
+    reservationTrace.start();
+    // ... 예약 생성 로직
+    reservationTrace.stop();
+  }
+}
+
+// Firebase Analytics 설정
+import { getAnalytics, logEvent } from 'firebase/analytics';
+
+export function initializeAnalytics() {
+  if (typeof window !== 'undefined') {
+    const analytics = getAnalytics(app);
+    
+    // 커스텀 이벤트 로깅
+    logEvent(analytics, 'reservation_created', {
+      facility_type: 'gym',
+      user_role: 'student'
+    });
+  }
+}
+```
+
+### Health Check API (Firebase)
+```typescript
+// pages/api/health.ts
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    // Firebase Admin SDK 연결 테스트
+    await adminDb.collection('health_check').limit(1).get();
+    await adminAuth.listUsers(1);
+    
+    // 환경변수 검증
+    validateFirebaseConfig();
+    
+    res.status(200).json({ 
+      status: 'healthy',
+      firebase: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({ 
+      status: 'error',
+      error: error.message 
+    });
+  }
+}
+```
+
+### Firebase 사용량 모니터링
+```typescript
+// Firebase 할당량 모니터링 함수
+export async function checkFirebaseQuota() {
+  const quotaMetrics = {
+    firestoreReads: await getFirestoreReadCount(),
+    firestoreWrites: await getFirestoreWriteCount(),
+    functionInvocations: await getFunctionInvocationCount(),
+    storageUsage: await getStorageUsageBytes()
+  };
+  
+  // 경고 임계값 체크
+  if (quotaMetrics.firestoreReads > 50000) { // 일일 읽기 한도의 80%
+    console.warn('Firestore 읽기 할당량 경고:', quotaMetrics.firestoreReads);
+  }
+  
+  return quotaMetrics;
+}
+```
+
+## Version Support Matrix
+| React | Next.js | Node.js | Firebase SDK | Firebase Admin | Status |
+|-------|---------|---------|--------------|----------------|--------|
+| 19.0+ | 15.1+   | 22.0+   | 10.14+       | 12.5+          | ✅ Current |
+| 18.0+ | 14.0+   | 18.0+   | 9.23+        | 11.11+         | ⚠️ Legacy |
+| 17.0+ | 13.0+   | 16.0+   | 9.0+         | 10.0+          | ❌ Deprecated |
+
+## Firebase 특화 개발 환경 설정
+
+### Firebase Emulator Suite 필수 설정
+```json
+// firebase.json
+{
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
+  }
+}
+```
+
+### 개발 스크립트 설정
+```json
+// package.json
+{
+  "scripts": {
+    "dev": "npm run firebase:emulators & next dev",
+    "firebase:emulators": "firebase emulators:start --only auth,firestore,functions,storage",
+    "firebase:deploy": "firebase deploy --only hosting,firestore,functions",
+    "test": "npm run firebase:emulators:test & jest",
+    "firebase:emulators:test": "firebase emulators:exec --only auth,firestore 'jest'"
+  }
+}
+```
+
+이 가이드라인을 따라 Firebase 기반 환경에서의 버전 호환성 문제를 예방하고 안정적인 개발 환경을 구축하세요.

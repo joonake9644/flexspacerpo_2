@@ -1,0 +1,34 @@
+{
+  "name": "flexspace-pro",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "firebase:emulators": "firebase emulators:start --only auth,firestore,functions,storage",
+    "deploy": "vite build && firebase deploy --only hosting"
+  },
+  "dependencies": {
+    "@material/web": "^2.4.0",
+    "clsx": "^2.1.1",
+    "firebase": "^10.14.0",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "autoprefixer": "^10.0.0",
+    "eslint": "^8.0.0",
+    "postcss": "^8.0.0",
+    "vite": "^7.1.4"
+  }
+}

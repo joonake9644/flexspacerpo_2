@@ -1,0 +1,279 @@
+001: // lib/utils.ts
+002: import { type ClassValue, clsx } from 'clsx'
+003: import { twMerge } from 'tailwind-merge'
+004: import { Timestamp } from 'firebase/firestore'
+005: 
+006: // shadcn/uië¥??„í•œ ?´ë˜?¤ëª… ë³‘í•© ?¨ìˆ˜
+007: export function cn(...inputs: ClassValue[]) {
+008:   return twMerge(clsx(inputs))
+009: }
+010: 
+011: /**
+012:  * ?«ìë§??ˆëŠ” ?„í™”ë²ˆí˜¸ ë¬¸ì?´ì„ ?œì‹œ???œì‹?¼ë¡œ ë³€?˜í•©?ˆë‹¤
+013:  * @param phone - ?œì‹??ì§€?•í•  ?œìˆ˜ ?«ì ?„í™”ë²ˆí˜¸ ë¬¸ì?? * @returns ?œì‹??ì§€?•ëœ ?„í™”ë²ˆí˜¸ ë¬¸ì???ëŠ” ?…ë ¥ê°’ì´ ? íš¨?˜ì? ?Šì? ê²½ìš° ?ë³¸ ë¬¸ì?? */
+014: export const formatPhoneNumberForDisplay = (phone?: string): string => {
+015:   if (!phone) return '?•ë³´ ?†ìŒ'
+016:   const cleaned = phone.replace(/\D/g, '') // ?«ìë§?ì¶”ì¶œ
+017: 
+018:   // ?€?œë?êµ??´ë???ë²ˆí˜¸ ?•ì‹ (11?ë¦¬)
+019:   if (cleaned.length === 11) {
+020:     return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`
+021:   }
+022:   // ?œìš¸ ì§€??²ˆ???¬í•¨ 10?ë¦¬ ? ì„  ë²ˆí˜¸
+023:   if (cleaned.startsWith('02') && cleaned.length === 10) {
+024:     return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 6)}-${cleaned.slice(6)}`
+025:   }
+026:   // ê·???10?ë¦¬ ? ì„  ë²ˆí˜¸ (031, 032 ??
+027:   if (cleaned.length === 10) {
+028:      return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`
+029:   }
+030:   // 8?ë¦¬ ? ì„ ë²ˆí˜¸ (êµ¬í˜•)
+031:   if (cleaned.length === 8) {
+032:     return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`
+033:   }
+034:   
+035:   return phone // ?œì‹??ì§€?•í•  ???†ëŠ” ê²½ìš° ?ë³¸ ë°˜í™˜
+036: }
+037: 
+038: /**
+039:  * Firebase Timestampë¥??œêµ­ ë¡œì????•ì‹?¼ë¡œ ë³€?? * @param timestamp - Firebase Timestamp ê°ì²´
+040:  * @param format - 'date' | 'datetime' | 'time'
+041:  * @returns ?¬ë§·??? ì§œ ë¬¸ì?? */
+042: export const formatFirebaseTimestamp = (
+043:   timestamp: Timestamp | null | undefined,
+044:   format: 'date' | 'datetime' | 'time' = 'datetime'
+045: ): string => {
+046:   if (!timestamp) return '?•ë³´ ?†ìŒ'
+047:   
+048:   const date = timestamp.toDate()
+049:   
+050:   switch (format) {
+051:     case 'date':
+052:       return new Intl.DateTimeFormat('ko-KR', {
+053:         year: 'numeric',
+054:         month: 'long',
+055:         day: 'numeric'
+056:       }).format(date)
+057:     case 'time':
+058:       return new Intl.DateTimeFormat('ko-KR', {
+059:         hour: '2-digit',
+060:         minute: '2-digit'
+061:       }).format(date)
+062:     case 'datetime':
+063:     default:
+064:       return new Intl.DateTimeFormat('ko-KR', {
+065:         year: 'numeric',
+066:         month: 'long',
+067:         day: 'numeric',
+068:         hour: '2-digit',
+069:         minute: '2-digit'
+070:       }).format(date)
+071:   }
+072: }
+073: 
+074: /**
+075:  * ?¼ë°˜ Date ê°ì²´ë¥?Firebase Timestampë¡?ë³€?? * @param date - Date ê°ì²´
+076:  * @returns Firebase Timestamp
+077:  */
+078: export const dateToTimestamp = (date: Date): Timestamp => {
+079:   return Timestamp.fromDate(date)
+080: }
+081: 
+082: /**
+083:  * ?œê°„ ë¬¸ì??HH:MM)??ë¶„ìœ¼ë¡?ë³€?? * @param timeString - "14:30" ?•ì‹???œê°„ ë¬¸ì?? * @returns ë¶??¨ìœ„ ?«ì
+084:  */
+085: export const timeStringToMinutes = (timeString: string): number => {
+086:   const [hours, minutes] = timeString.split(':').map(Number)
+087:   return hours * 60 + minutes
+088: }
+089: 
+090: /**
+091:  * ë¶„ì„ ?œê°„ ë¬¸ì??HH:MM)ë¡?ë³€?? * @param minutes - ë¶??¨ìœ„ ?«ì
+092:  * @returns "14:30" ?•ì‹???œê°„ ë¬¸ì?? */
+093: export const minutesToTimeString = (minutes: number): string => {
+094:   const hours = Math.floor(minutes / 60)
+095:   const mins = minutes % 60
+096:   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+097: }
+098: 
+099: /**
+100:  * Firebase ?ëŸ¬ ë©”ì‹œì§€ë¥??œêµ­?´ë¡œ ë³€?? * @param errorCode - Firebase ?ëŸ¬ ì½”ë“œ
+101:  * @returns ?œêµ­???ëŸ¬ ë©”ì‹œì§€
+102:  */
+103: export const translateFirebaseError = (errorCode: string): string => {
+104:   const errorMessages: Record<string, string> = {
+105:     // Auth ?ëŸ¬
+106:     'auth/user-not-found': '?±ë¡?˜ì? ?Šì? ?¬ìš©?ì…?ˆë‹¤.',
+107:     'auth/wrong-password': 'ë¹„ë?ë²ˆí˜¸ê°€ ?¼ì¹˜?˜ì? ?ŠìŠµ?ˆë‹¤.',
+108:     'auth/email-already-in-use': '?´ë? ?¬ìš© ì¤‘ì¸ ?´ë©”?¼ì…?ˆë‹¤.',
+109:     'auth/weak-password': 'ë¹„ë?ë²ˆí˜¸ê°€ ?ˆë¬´ ê°„ë‹¨?©ë‹ˆ?? 6?ë¦¬ ?´ìƒ ?…ë ¥?´ì£¼?¸ìš”.',
+110:     'auth/invalid-email': '?¬ë°”ë¥´ì? ?Šì? ?´ë©”???•ì‹?…ë‹ˆ??',
+111:     'auth/too-many-requests': '?ˆë¬´ ë§ì? ?”ì²­??ë°œìƒ?ˆìŠµ?ˆë‹¤. ? ì‹œ ???¤ì‹œ ?œë„?´ì£¼?¸ìš”.',
+112:     
+113:     // Firestore ?ëŸ¬
+114:     'firestore/permission-denied': '?‘ê·¼ ê¶Œí•œ???†ìŠµ?ˆë‹¤.',
+115:     'firestore/unavailable': '?œë¹„?¤ë? ?¼ì‹œ?ìœ¼ë¡??¬ìš©?????†ìŠµ?ˆë‹¤.',
+116:     'firestore/deadline-exceeded': '?”ì²­ ?œê°„??ì´ˆê³¼?˜ì—ˆ?µë‹ˆ??',
+117:     
+118:     // Storage ?ëŸ¬
+119:     'storage/unauthorized': '?Œì¼ ?…ë¡œ??ê¶Œí•œ???†ìŠµ?ˆë‹¤.',
+120:     'storage/object-not-found': '?Œì¼??ì°¾ì„ ???†ìŠµ?ˆë‹¤.',
+121:     'storage/quota-exceeded': '?€?¥ì†Œ ?©ëŸ‰??ì´ˆê³¼?ˆìŠµ?ˆë‹¤.',
+122:     
+123:     // Functions ?ëŸ¬
+124:     'functions/permission-denied': '?¨ìˆ˜ ?¤í–‰ ê¶Œí•œ???†ìŠµ?ˆë‹¤.',
+125:     'functions/unavailable': '?œë²„ ?¨ìˆ˜ë¥??¬ìš©?????†ìŠµ?ˆë‹¤.',
+126:   }
+127:   
+128:   return errorMessages[errorCode] || '?????†ëŠ” ?¤ë¥˜ê°€ ë°œìƒ?ˆìŠµ?ˆë‹¤.'
+129: }
+130: 
+131: /**
+132:  * ?ˆì•½ ?íƒœë¥??œêµ­?´ë¡œ ë³€?? * @param status - ?ˆì•½ ?íƒœ
+133:  * @returns ?œêµ­???íƒœ ë¬¸ì?? */
+134: export const translateBookingStatus = (status: string): string => {
+135:   const statusMap: Record<string, string> = {
+136:     'pending': '?¹ì¸ ?€ê¸?,
+137:     'approved': '?¹ì¸??,
+138:     'rejected': 'ê±°ì ˆ??,
+139:     'cancelled': 'ì·¨ì†Œ??,
+140:     'completed': '?„ë£Œ??
+141:   }
+142:   return statusMap[status] || status
+143: }
+144: 
+145: /**
+146:  * ?„ë¡œê·¸ë¨ ?ˆë²¨???œêµ­?´ë¡œ ë³€?? * @param level - ?„ë¡œê·¸ë¨ ?œì´?? * @returns ?œêµ­???œì´??ë¬¸ì?? */
+147: export const translateProgramLevel = (level: string): string => {
+148:   const levelMap: Record<string, string> = {
+149:     'beginner': 'ì´ˆê¸‰',
+150:     'intermediate': 'ì¤‘ê¸‰',
+151:     'advanced': 'ê³ ê¸‰'
+152:   }
+153:   return levelMap[level] || level
+154: }
+155: 
+156: /**
+157:  * ê¸ˆì•¡???œêµ­ ?í™” ?•ì‹?¼ë¡œ ?¬ë§·
+158:  * @param amount - ê¸ˆì•¡ (?«ì)
+159:  * @returns ?¬ë§·??ê¸ˆì•¡ ë¬¸ì?? */
+160: export const formatCurrency = (amount: number): string => {
+161:   if (amount === 0) return 'ë¬´ë£Œ'
+162:   return new Intl.NumberFormat('ko-KR', {
+163:     style: 'currency',
+164:     currency: 'KRW'
+165:   }).format(amount)
+166: }
+167: 
+168: /**
+169:  * ?”ì¼ ë°°ì—´???œêµ­??ë¬¸ì?´ë¡œ ë³€?? * @param days - ?”ì¼ ë°°ì—´ (0=?¼ìš”?? 1=?”ìš”?? ...)
+170:  * @returns ?œêµ­???”ì¼ ë¬¸ì?? */
+171: export const formatScheduleDays = (days: number[]): string => {
+172:   const dayNames = ['??, '??, '??, '??, 'ëª?, 'ê¸?, '??]
+173:   return days
+174:     .sort((a, b) => a - b)
+175:     .map(day => dayNames[day])
+176:     .join(', ')
+177: }
+178: 
+179: /**
+180:  * ?ìŠ¤?¸ë? ?ˆì „?˜ê²Œ ?ë¥´ê³?ë§ì¤„?„í‘œ ì¶”ê?
+181:  * @param text - ?ë³¸ ?ìŠ¤?? * @param maxLength - ìµœë? ê¸¸ì´
+182:  * @returns ?˜ë¦° ?ìŠ¤?? */
+183: export const truncateText = (text: string, maxLength: number): string => {
+184:   if (text.length <= maxLength) return text
+185:   return text.substring(0, maxLength) + '...'
+186: }
+187: 
+188: /**
+189:  * ?Œì¼ ?¬ê¸°ë¥??½ê¸° ?¬ìš´ ?•ì‹?¼ë¡œ ë³€?? * @param bytes - ë°”ì´???¬ê¸°
+190:  * @returns ?¬ë§·???¬ê¸° ë¬¸ì?? */
+191: export const formatFileSize = (bytes: number): string => {
+192:   if (bytes === 0) return '0 Bytes'
+193:   
+194:   const k = 1024
+195:   const sizes = ['Bytes', 'KB', 'MB', 'GB']
+196:   const i = Math.floor(Math.log(bytes) / Math.log(k))
+197:   
+198:   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+199: }
+200: 
+201: /**
+202:  * ?´ë©”??ì£¼ì†Œ ? íš¨??ê²€?? * @param email - ê²€?¬í•  ?´ë©”??ì£¼ì†Œ
+203:  * @returns ? íš¨???¬ë?
+204:  */
+205: export const isValidEmail = (email: string): boolean => {
+206:   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+207:   return emailRegex.test(email)
+208: }
+209: 
+210: /**
+211:  * ?œêµ­ ?„í™”ë²ˆí˜¸ ? íš¨??ê²€?? * @param phone - ê²€?¬í•  ?„í™”ë²ˆí˜¸
+212:  * @returns ? íš¨???¬ë?
+213:  */
+214: export const isValidPhoneNumber = (phone: string): boolean => {
+215:   const cleaned = phone.replace(/\D/g, '')
+216:   // ?´ë???11?ë¦¬) ?ëŠ” ? ì„ ?„í™”(8-10?ë¦¬) ê²€??  return /^01[0-9]{9}$|^0[2-9][0-9]{7,8}$/.test(cleaned)
+217: }
+218: 
+219: /**
+220:  * ?”ë°”?´ìŠ¤ ?¨ìˆ˜ - ?°ì† ?¸ì¶œ ë°©ì?
+221:  * @param func - ?¤í–‰???¨ìˆ˜
+222:  * @param delay - ì§€???œê°„(ms)
+223:  * @returns ?”ë°”?´ìŠ¤???¨ìˆ˜
+224:  */
+225: export const debounce = <T extends (...args: any[]) => any>(
+226:   func: T,
+227:   delay: number
+228: ): ((...args: Parameters<T>) => void) => {
+229:   let timeoutId: NodeJS.Timeout
+230:   return (...args: Parameters<T>) => {
+231:     clearTimeout(timeoutId)
+232:     timeoutId = setTimeout(() => func.apply(null, args), delay)
+233:   }
+234: }
+235: 
+236: /**
+237:  * ë°°ì—´??ì²?¬ ?¨ìœ„ë¡??˜ëˆ„ê¸? * @param array - ?ë³¸ ë°°ì—´
+238:  * @param chunkSize - ì²?¬ ?¬ê¸°
+239:  * @returns ì²?¬ ë°°ì—´?? */
+240: export const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
+241:   const chunks: T[][] = []
+242:   for (let i = 0; i < array.length; i += chunkSize) {
+243:     chunks.push(array.slice(i, i + chunkSize))
+244:   }
+245:   return chunks
+246: }
+247: 
+248: /**
+249:  * ?˜ê²½ë³€???„ìˆ˜ ì²´í¬ ?¨ìˆ˜
+250:  * @param name - ?˜ê²½ë³€???´ë¦„
+251:  * @returns ?˜ê²½ë³€??ê°? * @throws ?˜ê²½ë³€?˜ê? ?†ìœ¼ë©??ëŸ¬
+252:  */
+253: export const requireEnv = (name: string): string => {
+254:   const isServer = typeof window === 'undefined'
+255:   let value: string | undefined
+256: 
+257:   if (isServer) {
+258:     value = process.env[name]
+259:   } else {
+260:     if (name.startsWith('NEXT_PUBLIC_')) {
+261:       value = process.env[name]
+262:     } else {
+263:       console.warn(`?´ë¼?´ì–¸?¸ì—??${name} ?˜ê²½ë³€?˜ì— ?‘ê·¼?????†ìŠµ?ˆë‹¤.`)
+264:       return ''
+265:     }
+266:   }
+267: 
+268:   if (!value) {
+269:     const errorMsg = `?˜ê²½ë³€???„ë½: ${name}`
+270:     if (isServer) {
+271:       throw new Error(errorMsg)
+272:     } else {
+273:       console.error(errorMsg)
+274:       return ''
+275:     }
+276:   }
+277: 
+278:   return value
+279: }

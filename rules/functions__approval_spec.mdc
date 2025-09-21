@@ -1,0 +1,71 @@
+---
+description: approveBooking 함수 사양서(트랜잭션, 겹침 체크, 상태 전이)
+---
+
+# approveBooking 사양서
+
+## 1. 목적
+- 예약 승인 시 시간 겹침을 방지하고, 동시 승인 경쟁에서도 단 1건만 승인되도록 트랜잭션으로 보장.
+
+## 2. 인터페이스
+- 유형: Callable HTTPS(Function) 또는 HTTP (권장: Callable)
+- 경로: callable `approveBooking`
+- 입력(payload):
+  - `bookingId: string`
+- 출력(result):
+  - `{ ok: true, bookingId, status: 'approved' }` 또는 오류 코드
+- 오류 코드 예시:
+  - `not_found`, `invalid_state`, `conflict_overlap`, `permission_denied`, `internal`
+
+## 3. 전제 조건
+- 보안 규칙에서 단일 예약 유효성(`startTime < endTime`)은 이미 보장.
+- 시간 경계 규칙: 종료==시작은 비겹침으로 간주.
+- 상태 전이 허용: `pending -> approved | rejected`, `approved -> cancelled | completed`.
+
+## 4. 데이터 모델(요약)
+- 컬렉션: `bookings/{bookingId}`
+  - 주요 필드: `facilityId, startDate(YYYY-MM-DD), startTime(ts), endTime(ts), status, userId, createdAt`
+- 쿼리 색인: 
+  - (`facilityId` ASC, `startDate` ASC, `startTime` ASC)
+  - (`userId` ASC, `status` ASC, `createdAt` DESC)
+
+## 5. 승인 로직(트랜잭션)
+1) 입력 검증: `bookingId` 필수
+2) 트랜잭션 시작
+3) 대상 예약 B 로드
+   - 없으면 `not_found`
+   - `status !== 'pending'`이면 `invalid_state`
+4) 동일 시설/날짜 범위에서 겹침 후보 조회(approved 상태만)
+   - 질의: `where('facilityId','==',B.facilityId)`, `where('startDate','==',B.startDate)`, `where('status','==','approved')`,
+     `where('startTime','<', B.endTime)`, `where('endTime','>', B.startTime)`
+   - 위 조건은 종료==시작을 비겹침으로 모델링(교집합 존재: start < other.end && end > other.start)
+5) 결과가 존재하면 `conflict_overlap` 오류로 중단
+6) 없으면 B.status = 'approved', `approvedAt = serverTimestamp()`로 업데이트
+7) 커밋
+8) 성공 응답 반환
+
+## 6. 동시성/재시도
+- 동시 승인 요청은 모두 트랜잭션으로 실행되어 하나만 성공
+- Firestore 에러(ABORTED)는 백오프 후 1~3회 재시도
+
+## 7. 권한
+- 관리자만 호출 가능(서버에서 `context.auth.uid` 확인 후 `users/{uid}.role == 'admin'` 체크)
+
+## 8. 상태 전이 표
+- pending -> approved | rejected (허용)
+- approved -> cancelled | completed (허용)
+- 기타 전이는 거부
+
+## 9. 로깅/감사
+- 승인 성공/실패 로그 보관, `audit_logs` 컬렉션 또는 Cloud Logging
+
+## 10. 테스트 케이스(TDD 매핑)
+- S1~S4: 겹침/비겹침 케이스에서 승인 성공/실패
+- S5: 다른 시설/날짜 허용
+- S6: 유효성 오류는 규칙 단계에서 거부, 승인 로직 진입 전 차단
+- S7: 기존 approved와 겹치면 `conflict_overlap`
+- S8: 동시 승인 경쟁에서 1건만 성공
+
+## 11. 확장 고려
+- 다중 코트/부분 겹침 정책, 완충 시간(buffer) 도입 시 질의식 보정 필요
+- 반복 예약(weekly) 승인 시 배치 트랜잭션/워크플로우 분리

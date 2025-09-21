@@ -1,0 +1,441 @@
+---
+description: Firebase Database Schema & Security Rules Guidelines
+globs: 
+  - firestore.rules
+  - storage.rules
+  - functions/src/**/*.ts
+---
+
+# Firebase Database Schema & Security Rules Guidelines
+
+## Must
+
+### Firestore Document Structure
+- Each collection must follow consistent naming patterns (plural nouns: `users`, `reservations`, `programs`)
+- Document IDs should be descriptive or auto-generated UUIDs
+- Include `createdAt` and `updatedAt` timestamps in all documents using `serverTimestamp()`
+- Use subcollections for hierarchical data relationships
+- Always validate data structure before writing to Firestore
+- Include proper TypeScript interfaces for all document types
+- Use atomic transactions for multi-document operations
+
+### Firestore Security Rules
+- Every collection must have explicit security rules
+- Use authenticated user checks: `request.auth != null`
+- Implement resource-based access control: `resource.data.userId == request.auth.uid`
+- Validate data types and required fields in security rules
+- Never allow unrestricted access (`allow read, write: if true;`) in production
+- Test security rules with Firebase Emulator Suite
+
+### Firebase Functions
+- Each function must include proper error handling with try-catch blocks
+- Use TypeScript for all Firebase Functions
+- Include proper logging for debugging and monitoring
+- Validate all input parameters before processing
+- Use Firebase Admin SDK for server-side operations
+- Handle Firebase service quotas and limits gracefully
+
+## Should
+
+### Document Design Patterns
+- Keep document size under 1MB limit
+- Denormalize data for read efficiency when appropriate
+- Use document references for relationships between collections
+- Implement soft deletes with `isDeleted` boolean field
+- Version critical documents with `version` field
+- Use consistent field naming conventions (camelCase)
+
+### Collection Structure
+- Organize collections by feature domain
+- Use subcollections for 1-to-many relationships
+- Consider collection groups for cross-collection queries
+- Implement proper pagination with `limit()` and cursor-based pagination
+
+## Recommended Patterns
+
+### Authentication & User Management
+```typescript
+// User document structure
+interface User {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'admin' | 'staff' | 'student';
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+  isActive: boolean;
+}
+```
+
+### Reservation System Structure
+```typescript
+// Reservation document structure
+interface Reservation {
+  id: string;
+  userId: string;
+  facilityId: string;
+  startTime: FirebaseFirestore.Timestamp;
+  endTime: FirebaseFirestore.Timestamp;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+  metadata?: {
+    purpose: string;
+    contactInfo: string;
+    participantCount: number;
+  };
+}
+```
+
+### Security Rules Examples
+```javascript
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can only access their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == userId;
+    }
+    
+    // Reservation rules with role-based access
+    match /reservations/{reservationId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
+      allow update: if request.auth != null 
+        && (request.auth.uid == resource.data.userId 
+            || hasRole('admin') || hasRole('staff'));
+      allow delete: if request.auth != null 
+        && hasRole('admin');
+    }
+    
+    // Helper function for role checking
+    function hasRole(role) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+    
+    // Data validation functions
+    function isValidReservation(data) {
+      return data.keys().hasAll(['userId', 'facilityId', 'startTime', 'endTime', 'status'])
+        && data.userId is string
+        && data.facilityId is string
+        && data.startTime is timestamp
+        && data.endTime is timestamp
+        && data.status in ['pending', 'approved', 'rejected', 'cancelled'];
+    }
+  }
+}
+```
+
+## Schema Organization
+
+### Collection Hierarchy
+```
+/users/{userId}
+/facilities/{facilityId}
+/reservations/{reservationId}
+/programs/{programId}
+  /enrollments/{enrollmentId}  # subcollection
+/notifications/{notificationId}
+/system/{configId}  # system configuration
+```
+
+### Composite Indexes
+```json
+// firestore.indexes.json
+{
+  "indexes": [
+    {
+      "collectionGroup": "reservations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "facilityId", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservations", 
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ]
+}
+```
+
+## Performance Considerations
+
+### Query Optimization
+- Use compound queries instead of multiple single-field queries
+- Implement proper pagination with `startAfter()` cursors
+- Cache frequently accessed data using React Query
+- Use `limit()` to prevent large data transfers
+- Consider using collection groups for cross-collection queries
+
+### Write Operations
+```typescript
+// Batch writes for multiple related operations
+import { writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+
+export async function createReservationWithNotification(
+  reservationData: CreateReservationData,
+  notificationData: CreateNotificationData
+) {
+  const batch = writeBatch(db);
+  
+  const reservationRef = doc(collection(db, 'reservations'));
+  const notificationRef = doc(collection(db, 'notifications'));
+  
+  batch.set(reservationRef, {
+    ...reservationData,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  
+  batch.set(notificationRef, {
+    ...notificationData,
+    reservationId: reservationRef.id,
+    createdAt: serverTimestamp()
+  });
+  
+  await batch.commit();
+  return reservationRef.id;
+}
+```
+
+### Data Denormalization Example
+```typescript
+// Denormalize user info in reservations for efficient reads
+interface ReservationWithUserInfo {
+  id: string;
+  userId: string;
+  // Denormalized user data
+  userName: string;
+  userEmail: string;
+  // ... other reservation fields
+}
+
+// Update denormalized data when user profile changes
+export const onUserUpdate = functions.firestore
+  .document('users/{userId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    
+    // Check if relevant fields changed
+    if (before.displayName !== after.displayName) {
+      const batch = admin.firestore().batch();
+      
+      // Update all reservations with new user name
+      const reservations = await admin.firestore()
+        .collection('reservations')
+        .where('userId', '==', context.params.userId)
+        .get();
+      
+      reservations.forEach(doc => {
+        batch.update(doc.ref, {
+          userName: after.displayName,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      
+      await batch.commit();
+    }
+  });
+```
+
+## Security Best Practices
+
+### Authentication Security
+```typescript
+// Verify custom claims in security rules
+function hasCustomClaim(claim) {
+  return request.auth.token[claim] == true;
+}
+
+// Set custom claims in Firebase Functions
+export const setUserRole = functions.https.onCall(async (data, context) => {
+  // Verify admin privileges
+  if (!context.auth || !context.auth.token.admin) {
+    throw new functions.https.HttpsError('permission-denied', 'Insufficient permissions');
+  }
+  
+  await admin.auth().setCustomUserClaims(data.uid, { [data.role]: true });
+  return { success: true };
+});
+```
+
+### Data Validation
+```typescript
+// Input validation in Firebase Functions
+import * as z from 'zod';
+
+const CreateReservationSchema = z.object({
+  facilityId: z.string().min(1),
+  startTime: z.date(),
+  endTime: z.date(),
+  purpose: z.string().max(500).optional()
+});
+
+export const createReservation = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  try {
+    const validatedData = CreateReservationSchema.parse(data);
+    
+    // Additional business logic validation
+    if (validatedData.endTime <= validatedData.startTime) {
+      throw new functions.https.HttpsError('invalid-argument', 'End time must be after start time');
+    }
+    
+    // Process reservation...
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid input data');
+    }
+    throw error;
+  }
+});
+```
+
+## Development Workflow
+
+### Firestore Emulator Setup
+```json
+// firebase.json
+{
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "auth": {
+      "port": 9099
+    }
+  }
+}
+```
+
+### Testing Security Rules
+```javascript
+// tests/firestore.rules.test.js
+import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
+
+describe('Firestore Security Rules', () => {
+  let testEnv;
+  
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: 'test-project',
+      firestore: {
+        rules: fs.readFileSync('firestore.rules', 'utf8'),
+      },
+    });
+  });
+  
+  afterAll(async () => {
+    await testEnv.cleanup();
+  });
+  
+  test('should allow user to read own profile', async () => {
+    const alice = testEnv.authenticatedContext('alice');
+    await firebase.assertSucceeds(
+      alice.firestore().doc('users/alice').get()
+    );
+  });
+  
+  test('should deny user from reading other profiles', async () => {
+    const alice = testEnv.authenticatedContext('alice');
+    await firebase.assertFails(
+      alice.firestore().doc('users/bob').get()
+    );
+  });
+});
+```
+
+## Monitoring & Maintenance
+
+### Firebase Performance Monitoring
+```typescript
+// Monitor critical operations
+import { trace } from 'firebase/performance';
+
+export async function createReservationWithMonitoring(data: CreateReservationData) {
+  const reservationTrace = trace(perf, 'create_reservation');
+  reservationTrace.start();
+  
+  try {
+    const result = await createReservation(data);
+    reservationTrace.putAttribute('success', 'true');
+    return result;
+  } catch (error) {
+    reservationTrace.putAttribute('success', 'false');
+    reservationTrace.putAttribute('error', error.message);
+    throw error;
+  } finally {
+    reservationTrace.stop();
+  }
+}
+```
+
+### Scheduled Cleanup Tasks
+```typescript
+// Clean up old data periodically
+export const cleanupOldReservations = functions.pubsub
+  .schedule('0 2 * * *') // Daily at 2 AM
+  .onRun(async (context) => {
+    const cutoffDate = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
+    );
+    
+    const batch = admin.firestore().batch();
+    const oldReservations = await admin.firestore()
+      .collection('reservations')
+      .where('endTime', '<', cutoffDate)
+      .where('status', '==', 'completed')
+      .limit(500)
+      .get();
+    
+    oldReservations.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    console.log(`Cleaned up ${oldReservations.size} old reservations`);
+  });
+```
+
+## Migration from Supabase
+
+### Data Structure Mapping
+```typescript
+// Convert PostgreSQL tables to Firestore collections
+interface SupabaseToFirestoreMapping {
+  // users table → users collection
+  users: {
+    id: 'uid' // UUID → Firebase UID
+    email: 'email'
+    created_at: 'createdAt' // snake_case → camelCase
+    updated_at: 'updatedAt'
+  }
+  
+  // reservations table → reservations collection
+  reservations: {
+    id: 'id'
+    user_id: 'userId' // Foreign key → document reference
+    facility_id: 'facilityId'
+    start_time: 'startTime'
+    end_time: 'endTime'
+    created_at: 'createdAt'
+    updated_at: 'updatedAt'
+  }
+}
+```
+
+이 가이드라인을 따라 Firebase 기반의 안정적이고 확장 가능한 데이터베이스 스키마와 보안 규칙을 구축하세요.

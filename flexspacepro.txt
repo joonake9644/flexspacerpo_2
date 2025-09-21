@@ -1,0 +1,50 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDOVBFa-BZr7M4gHprMzVp5zZ6HbPVSEjo",
+  authDomain: "flexspace-pro.firebaseapp.com",
+  projectId: "flexspace-pro",
+  storageBucket: "flexspace-pro.firebasestorage.app",
+  messagingSenderId: "166026268474",
+  appId: "1:166026268474:web:6c4bf4e30b4d153e750a03",
+  measurementId: "G-JRD1X6Y7CL"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+
+
+
+테스트 모드:
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if
+          request.time < timestamp.date(2025, 9, 29);
+    }
+  }
+}
+
+
+프로덕션모드:
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

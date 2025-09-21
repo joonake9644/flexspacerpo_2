@@ -1,0 +1,222 @@
+---
+description: Firebase 기반 체육관 관리 웹앱을 위한 TDD 프로세스 가이드라인
+globs:
+alwaysApply: true
+---
+
+# TDD Process Guidelines - Cursor Rules (Firebase Edition)
+
+## ⚠️ MANDATORY: Follow these rules for EVERY implementation and modification
+
+**This document defines the REQUIRED process for all code changes in Firebase-based architecture. No exceptions without explicit team approval.**
+
+## Core Cycle: Red → Green → Refactor
+
+### 1. RED Phase
+- Write a failing test FIRST
+- Test the simplest scenario
+- Verify test fails for the right reason
+- One test at a time
+- Mock Firebase services initially
+
+### 2. GREEN Phase  
+- Write MINIMAL code to pass
+- "Fake it till you make it" is OK
+- Use Firebase Emulator Suite for consistent testing
+- YAGNI principle
+
+### 3. REFACTOR Phase
+- Remove duplication
+- Improve naming
+- Simplify structure
+- Keep tests passing
+- Optimize Firebase queries/operations
+
+## Test Quality: FIRST Principles
+- **Fast**: Milliseconds, not seconds (use Firebase Emulators)
+- **Independent**: No shared state, clean Firestore between tests
+- **Repeatable**: Same result every time (emulator consistency)
+- **Self-validating**: Pass/fail, no manual checks
+- **Timely**: Written just before code
+
+## Test Structure: AAA Pattern
+```javascript
+// Arrange
+// Set up Firebase emulators, test data, and mocks
+const testDb = getFirestore();
+await testDb.collection('reservations').doc('test-id').set(testData);
+
+// Act
+// Execute the function/method
+const result = await createReservation(reservationData);
+
+// Assert
+// Verify expected outcome and Firebase state
+expect(result).toEqual(expectedResult);
+const doc = await testDb.collection('reservations').doc(result.id).get();
+expect(doc.exists).toBe(true);
+```
+
+## Firebase-Specific Implementation Flow
+1. **List scenarios** before coding (including Firebase edge cases)
+2. **Set up Firebase Emulator Suite** for isolated testing
+3. **Pick one scenario** → Write test with Firebase mocks/emulators
+4. **Run test** → See it fail (Red)
+5. **Implement** → Make it pass (Green) with real Firebase integration
+6. **Refactor** → Clean up, optimize Firestore queries (Still Green)
+7. **Commit** → Small, frequent commits
+8. **Repeat** → Next scenario
+
+## Test Pyramid Strategy (Firebase Context)
+- **Unit Tests** (70%): 
+  - Pure functions, validation logic
+  - Firebase SDK methods with mocks
+  - Business logic independent of Firebase
+- **Integration Tests** (20%): 
+  - Firebase Functions with emulators
+  - Authentication flows
+  - Firestore transaction logic
+- **Acceptance Tests** (10%): 
+  - End-to-end user scenarios
+  - Firebase Hosting deployment tests
+
+## Firebase Testing Patterns
+
+### Authentication Testing
+```javascript
+// Mock Firebase Auth
+jest.mock('firebase/auth');
+const mockUser = { uid: 'test-uid', email: 'test@example.com' };
+signInWithEmailAndPassword.mockResolvedValue({ user: mockUser });
+```
+
+### Firestore Testing
+```javascript
+// Use Firebase Admin SDK for testing
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+
+beforeEach(async () => {
+  // Clear test database
+  await clearFirestoreData();
+});
+```
+
+### Firebase Functions Testing
+```javascript
+// Test Cloud Functions with emulators
+const test = require('firebase-functions-test')();
+const myFunction = require('../index.js').myFunction;
+
+const wrapped = test.wrap(myFunction);
+const result = await wrapped(data, context);
+```
+
+## Outside-In vs Inside-Out (Firebase Approach)
+- **Outside-In**: 
+  - Start with user-facing test → Mock Firebase services → Implement Firebase integration
+  - Good for authentication flows, reservation workflows
+- **Inside-Out**: 
+  - Start with Firebase data models → Build business logic → Integrate with UI
+  - Good for data validation, conflict detection algorithms
+
+## Firebase-Specific Anti-patterns to Avoid
+- Testing Firebase SDK implementation details
+- Not using Firebase Emulator Suite for consistent testing
+- Hardcoding Firebase configuration in tests
+- Testing against production Firebase project
+- Not cleaning up test data between runs
+- Ignoring Firestore security rules in tests
+- Testing Firebase Functions without proper context mocking
+
+## When Tests Fail (Firebase Context)
+1. **Identify**: Firebase connection issue, emulator problem, or business logic bug?
+2. **Isolate**: Check emulator logs, Firebase console, network connectivity
+3. **Fix**: Code bug, Firebase configuration, or test setup
+4. **Learn**: Add Firebase-specific edge cases (offline, permissions, limits)
+
+## Firebase Emulator Setup Requirements
+```json
+// firebase.json
+{
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "functions": { "port": 5001 },
+    "hosting": { "port": 5000 },
+    "storage": { "port": 9199 },
+    "ui": { "enabled": true }
+  }
+}
+```
+
+## Team Practices (Firebase Edition)
+- Firebase Emulator Suite mandatory for all tests
+- CI/CD with Firebase deployment staging
+- No merge without passing Firebase integration tests
+- Test Firebase security rules separately
+- Firebase Functions unit tests + integration tests
+- Regular Firebase quota/usage monitoring
+- Pair programming for complex Firestore queries
+
+## Firebase-Specific Test Categories
+
+### Authentication Tests
+- Sign-up/Sign-in flows
+- Role-based access control
+- Token validation
+- Password reset flows
+
+### Firestore Tests  
+- CRUD operations
+- Query optimization
+- Transaction handling
+- Real-time listener behavior
+- Security rules validation
+
+### Firebase Functions Tests
+- HTTP triggers
+- Firestore triggers  
+- Authentication triggers
+- Scheduled functions
+- Error handling
+
+### Firebase Hosting Tests
+- Deployment verification
+- Routing configuration
+- Security headers
+- Performance metrics
+
+## Pragmatic Exceptions (Firebase Context)
+- **Firebase Console UI**: Manual verification + screenshot tests
+- **Real-time features**: Integration tests with emulators
+- **Performance**: Firebase Performance Monitoring integration
+- **Legacy Firebase rules**: Test on migration
+- **Third-party Firebase extensions**: Mock external dependencies
+
+## Firebase Testing Best Practices
+- Use Firebase Admin SDK for test setup/teardown
+- Test both online and offline scenarios
+- Validate Firestore security rules independently
+- Mock external APIs called from Firebase Functions
+- Test Firebase quota limits and error handling
+- Use Firebase Test Lab for mobile components (if applicable)
+
+## Remember (Firebase Edition)
+- Tests are living documentation for Firebase integration
+- Test Firebase behavior, not SDK implementation
+- Small steps, fast feedback with emulator suite
+- When in doubt, write a Firebase integration test
+- Keep Firebase emulator suite updated
+- Monitor Firebase usage costs in tests
+
+## Firebase Project Structure for Testing
+```
+tests/
+├── unit/           # Pure business logic
+├── integration/    # Firebase service integration  
+├── e2e/           # Full user flows
+├── fixtures/      # Test data for Firestore
+├── helpers/       # Firebase test utilities
+└── setup/         # Emulator configuration
+```

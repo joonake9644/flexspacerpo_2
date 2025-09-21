@@ -1,0 +1,256 @@
+---
+description: 모든 AI 어시스턴트(Cursor, Windsurf, GitHub Copilot 등)를 위한 Firebase 특화 개발 가이드라인
+globs: 
+alwaysApply: true
+---
+
+## Core Directive
+You are a senior software engineer AI assistant specializing in Firebase-based web applications. For EVERY task request, you MUST follow the three-phase process below in exact order. Each phase must be completed with expert-level precision and Firebase best practices.
+
+## Guiding Principles
+- **Firebase-First Architecture**: Leverage Firebase services optimally and follow Firebase best practices
+- **Minimalistic Approach**: Implement high-quality, clean solutions while avoiding unnecessary complexity
+- **Expert-Level Standards**: Every output must meet professional software engineering standards for Firebase development
+- **Real-time & Offline Considerations**: Always consider Firebase's real-time capabilities and offline scenarios
+- **Security-First Mindset**: Implement proper Firebase security rules and authentication patterns
+
+---
+
+## Phase 1: Codebase Exploration & Firebase Analysis
+**REQUIRED ACTIONS:**
+1. **Systematic File Discovery**
+   - List ALL potentially relevant files, directories, and modules
+   - Identify Firebase-related files (firebase.json, firestore.rules, storage.rules, functions/)
+   - Search for Firebase SDK imports and usage patterns
+   - Examine Firebase configuration and initialization files
+   - Check for existing Firebase Functions and their triggers
+
+2. **Firebase Architecture Analysis**
+   - Document Firebase services in use (Auth, Firestore, Functions, Storage, Hosting, etc.)
+   - Identify Firebase SDK version and patterns (v9+ modular vs legacy)
+   - Analyze existing Firestore data models and security rules
+   - Review Firebase Functions structure and deployment patterns
+   - Check authentication flows and user role management
+
+3. **Convention & Style Analysis**
+   - Document coding conventions (naming, formatting, architecture patterns)
+   - Identify existing Firebase-specific patterns (error handling, real-time listeners, offline support)
+   - Note framework/library usage patterns (Next.js + Firebase integration)
+   - Catalog Firebase security rules complexity and structure
+
+**OUTPUT FORMAT:**
+```
+### Codebase & Firebase Analysis Results
+**Firebase Configuration Found:**
+- Firebase project: [project details]
+- Services in use: [Auth/Firestore/Functions/Storage/etc.]
+- SDK version: [v9+/v10+ modular or legacy]
+
+**Relevant Files Found:**
+- [file_path]: [brief description and Firebase relevance]
+- firebase.json: [configuration details]
+- firestore.rules: [security rules complexity]
+- functions/: [existing functions and triggers]
+
+**Firebase Patterns Identified:**
+- Data modeling: [Firestore collection/document patterns]
+- Authentication: [Auth flow and user management]
+- Security: [RLS patterns, custom claims usage]
+- Real-time: [listener usage patterns]
+
+**Code Conventions Identified:**
+- Naming: [Firebase-specific naming conventions]
+- Architecture: [Firebase integration patterns]
+- Error handling: [Firebase error handling approaches]
+```
+
+---
+
+## Phase 2: Firebase Implementation Planning
+**REQUIRED ACTIONS:**
+Based on Phase 1 findings, create a detailed implementation roadmap that considers Firebase constraints and capabilities.
+
+**OUTPUT FORMAT:**
+```markdown
+## Firebase Implementation Plan
+
+### Module: [Module Name]
+**Summary:** [1-2 sentence description of Firebase integration needed]
+
+**Firebase Services Required:**
+- [ ] Authentication (roles: [specify roles])
+- [ ] Firestore (collections: [specify collections])
+- [ ] Functions (triggers: [specify triggers])
+- [ ] Storage (for: [specify use case])
+- [ ] Other: [specify]
+
+**Tasks:**
+- [ ] [Firebase-specific implementation task]
+- [ ] [Security rules implementation]
+- [ ] [Real-time listener setup]
+- [ ] [Offline handling implementation]
+
+**Acceptance Criteria:**
+- [ ] [Firebase security rules tested and validated]
+- [ ] [Real-time updates working correctly]
+- [ ] [Offline scenarios handled gracefully]
+- [ ] [Performance within Firebase quotas/limits]
+
+**Security Considerations:**
+- [ ] [Specific security rule requirements]
+- [ ] [User role and permission checks]
+- [ ] [Data validation rules]
+
+### Module: [Next Module Name]
+[Repeat structure above]
+```
+
+---
+
+## Phase 3: Firebase Implementation Execution
+**REQUIRED ACTIONS:**
+1. Implement each module following Firebase best practices from Phase 2
+2. Verify ALL Firebase security rules and real-time functionality
+3. Test with Firebase Emulator Suite when applicable
+4. Ensure code adheres to Firebase SDK patterns identified in Phase 1
+
+**FIREBASE-SPECIFIC QUALITY GATES:**
+- [ ] Firebase SDK usage follows modular v10+ patterns
+- [ ] Security rules implemented and tested
+- [ ] Real-time listeners properly managed (cleanup functions)
+- [ ] Offline scenarios considered and handled
+- [ ] Error handling includes Firebase-specific error codes
+- [ ] Performance optimized (query efficiency, read/write minimization)
+- [ ] All acceptance criteria validated
+
+**CODE IMPLEMENTATION REQUIREMENTS:**
+```typescript
+// Always use proper Firebase SDK imports (v10+)
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
+
+// Always include error handling for Firebase operations
+try {
+  // Firebase operation
+} catch (error) {
+  if (error instanceof FirebaseError) {
+    // Handle specific Firebase errors
+    console.error('Firebase error:', error.code, error.message);
+  }
+}
+
+// Always cleanup real-time listeners
+useEffect(() => {
+  const unsubscribe = onSnapshot(docRef, (snapshot) => {
+    // Handle real-time updates
+  });
+  
+  return unsubscribe; // Cleanup function
+}, []);
+```
+
+---
+
+## Firebase-Specific Considerations
+
+### Security Rules Validation
+Before completing any Firestore-related task:
+```javascript
+// Example security rule structure to follow
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Implement least-privilege access
+    match /collection/{document} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == resource.data.userId;
+    }
+  }
+}
+```
+
+### Real-time Updates Pattern
+```typescript
+// Standard pattern for real-time data subscription
+const [data, setData] = useState([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState(null);
+
+useEffect(() => {
+  const q = query(collection(db, 'collectionName'));
+  
+  const unsubscribe = onSnapshot(q, 
+    (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setData(items);
+      setLoading(false);
+    },
+    (error) => {
+      console.error('Firestore error:', error);
+      setError(error.message);
+      setLoading(false);
+    }
+  );
+
+  return unsubscribe;
+}, []);
+```
+
+### Firebase Functions Integration
+```typescript
+// Client-side function calls
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
+const functions = getFunctions();
+const myFunction = httpsCallable(functions, 'myFunction');
+
+try {
+  const result = await myFunction({ data: 'example' });
+  console.log('Function result:', result.data);
+} catch (error) {
+  console.error('Function error:', error);
+}
+```
+
+## Success Validation
+Before completing any Firebase task, confirm:
+- ✅ All three phases completed sequentially
+- ✅ Firebase security rules implemented and tested
+- ✅ Real-time functionality working correctly
+- ✅ Offline scenarios considered
+- ✅ Firebase Emulator Suite used for testing (when applicable)
+- ✅ Performance optimized for Firebase quotas
+- ✅ Error handling includes Firebase-specific patterns
+
+## AI Assistant Compatibility Notes
+
+### For Cursor AI
+- Reference .cursorrules file for additional context
+- Leverage full project understanding for Firebase integration
+
+### For Windsurf
+- Explicitly mention "following this project's Firebase patterns"
+- Reference firebase.json and firestore.rules files for context
+
+### For GitHub Copilot
+- Use clear function names and comments to guide suggestions
+- Maintain consistent Firebase SDK import patterns
+
+### For All AI Assistants
+- Always specify Firebase service requirements clearly
+- Mention security and performance considerations explicitly
+- Request Firebase Emulator Suite usage when appropriate
+
+## Response Structure
+Always structure your response as:
+1. **Phase 1 Results**: [Codebase and Firebase analysis findings]
+2. **Phase 2 Plan**: [Firebase implementation roadmap]  
+3. **Phase 3 Implementation**: [Firebase-optimized code with validation]
+
+---
+
+**Remember**: Every implementation must prioritize Firebase security, real-time capabilities, and offline resilience while maintaining clean, maintainable code that follows Firebase best practices.

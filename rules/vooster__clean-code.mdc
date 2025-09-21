@@ -1,0 +1,323 @@
+---
+description: Firebase 기반 개발을 위한 Clean Code Guidelines
+globs:
+alwaysApply: true
+---
+
+# Clean Code Guidelines (Firebase Edition)
+
+You are an expert software engineer focused on writing clean, maintainable code with Firebase best practices. Follow these principles rigorously:
+
+## Core Principles
+- **DRY** - Eliminate duplication ruthlessly (especially Firebase configurations)
+- **KISS** - Simplest solution that works (avoid over-engineered Firebase abstractions)
+- **YAGNI** - Build only what's needed now (don't implement unused Firebase services)
+- **SOLID** - Apply all five principles consistently
+- **Boy Scout Rule** - Leave code cleaner than found
+
+## Naming Conventions
+- Use **intention-revealing** names
+- Avoid abbreviations except well-known ones (e.g., URL, API, DB, Auth)
+- Classes: **nouns**, Methods: **verbs**, Booleans: **is/has/can** prefix
+- Constants: UPPER_SNAKE_CASE
+- No magic numbers - use named constants
+- Firebase-specific naming:
+  - Collections: plural nouns (`users`, `reservations`)
+  - Documents: descriptive IDs (`user-123`, `reservation-2024-01-15`)
+  - Fields: camelCase (`createdAt`, `isActive`, `userId`)
+
+## Functions & Methods
+- **Single Responsibility** - one reason to change
+- Maximum 20 lines (prefer under 10)
+- Maximum 3 parameters (use objects for more)
+- No side effects in pure functions
+- Early returns over nested conditions
+- Firebase-specific patterns:
+  - Separate Firebase operations from business logic
+  - Use dedicated functions for Firestore queries
+  - Handle Firebase errors consistently
+
+## Code Structure
+- **Cyclomatic complexity** < 10
+- Maximum nesting depth: 3 levels
+- Organize by feature, not by type
+- Dependencies point inward (Clean Architecture)
+- Interfaces over implementations
+- Firebase-specific structure:
+  - Separate Firebase config from business logic
+  - Group related Firestore operations
+  - Abstract Firebase SDK calls behind service layers
+
+## Firebase-Specific Clean Code Patterns
+
+### Configuration Management
+```typescript
+// ✅ Good: Centralized configuration
+// src/lib/firebase/config.ts
+export const firebaseConfig = {
+  apiKey: requireEnv('NEXT_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: requireEnv('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: requireEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  // ...
+};
+
+// ✅ Good: Single initialization
+export const db = getFirestore(initializeApp(firebaseConfig));
+export const auth = getAuth();
+```
+
+### Firestore Operations
+```typescript
+// ✅ Good: Clean, reusable Firestore operations
+export const UserService = {
+  async getUser(userId: string): Promise<User | null> {
+    const docRef = doc(db, 'users', userId);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) return null;
+    
+    return { id: docSnap.id, ...docSnap.data() } as User;
+  },
+
+  async createUser(userData: CreateUserData): Promise<string> {
+    const docRef = await addDoc(collection(db, 'users'), {
+      ...userData,
+      createdAt: serverTimestamp(),
+    });
+    
+    return docRef.id;
+  }
+};
+```
+
+### Error Handling with Firebase
+```typescript
+// ✅ Good: Specific Firebase error handling
+export const handleFirebaseError = (error: FirebaseError): string => {
+  switch (error.code) {
+    case 'auth/user-not-found':
+      return '사용자를 찾을 수 없습니다.';
+    case 'firestore/permission-denied':
+      return '권한이 없습니다.';
+    case 'storage/unauthorized':
+      return '파일 접근 권한이 없습니다.';
+    default:
+      console.error('Firebase Error:', error);
+      return '오류가 발생했습니다. 다시 시도해주세요.';
+  }
+};
+```
+
+## Comments & Documentation
+- Code should be self-documenting
+- Comments explain **why**, not what
+- Update comments with code changes
+- Delete commented-out code immediately
+- Document public APIs thoroughly
+- Firebase-specific documentation:
+  - Document Firestore security rules logic
+  - Explain complex query patterns
+  - Document Firebase Functions triggers
+
+## Error Handling
+- Fail fast with clear messages
+- Use Firebase-specific error types
+- Handle errors at appropriate levels
+- Never catch generic exceptions
+- Log errors with context
+- Firebase patterns:
+  - Handle offline/online states
+  - Implement retry logic for transient failures
+  - Gracefully handle quota limits
+
+## Testing
+- **TDD** when possible with Firebase Emulator Suite
+- Test behavior, not implementation
+- One assertion per test
+- Descriptive test names: `should_X_when_Y`
+- **AAA pattern**: Arrange, Act, Assert
+- Maintain test coverage > 80%
+- Firebase testing patterns:
+  - Use Firebase Test SDK for unit tests
+  - Test security rules separately
+  - Mock Firebase services in unit tests
+  - Use emulators for integration tests
+
+## Performance & Optimization
+- Profile before optimizing
+- Optimize algorithms before micro-optimizations
+- Cache expensive operations
+- Lazy load when appropriate
+- Avoid premature optimization
+- Firebase-specific optimizations:
+  - Minimize Firestore read operations
+  - Use composite queries efficiently
+  - Implement proper pagination
+  - Cache frequently accessed data
+  - Optimize security rules for performance
+
+## Security
+- Never trust user input
+- Sanitize all inputs
+- Use Firebase security rules properly
+- Follow **principle of least privilege**
+- Keep dependencies updated
+- No secrets in code
+- Firebase security patterns:
+  - Implement proper Firestore security rules
+  - Use Firebase Auth tokens correctly
+  - Validate data on both client and server
+  - Regular security rules audits
+
+## Firebase-Specific Best Practices
+
+### Firestore Data Modeling
+```typescript
+// ✅ Good: Normalized data structure
+interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+interface Reservation {
+  id: string;
+  userId: string; // Reference to user
+  facilityId: string;
+  startTime: Timestamp;
+  endTime: Timestamp;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp;
+}
+```
+
+### Firebase Functions Structure
+```typescript
+// ✅ Good: Clean function structure
+export const createReservation = functions.firestore
+  .document('reservations/{reservationId}')
+  .onCreate(async (snap, context) => {
+    const reservation = snap.data();
+    
+    try {
+      await validateReservation(reservation);
+      await checkConflicts(reservation);
+      await sendNotification(reservation);
+    } catch (error) {
+      console.error('Error processing reservation:', error);
+      throw error;
+    }
+  });
+```
+
+### State Management with Firebase
+```typescript
+// ✅ Good: Clean state management
+export const useAuth = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser ? adaptFirebaseUser(firebaseUser) : null);
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return { user, loading };
+};
+```
+
+## Version Control
+- Atomic commits - one logical change
+- Imperative mood commit messages
+- Reference issue numbers
+- Branch names: `type/description`
+- Rebase feature branches before merging
+- Firebase-specific commits:
+  - Separate Firebase config changes
+  - Include security rules in relevant commits
+  - Version Firebase Functions separately
+
+## Code Reviews
+- Review for correctness first
+- Check edge cases
+- Verify naming clarity
+- Ensure consistent style
+- Suggest improvements constructively
+- Firebase-specific reviews:
+  - Review Firestore security rules
+  - Check Firebase SDK usage patterns
+  - Verify error handling for Firebase operations
+  - Ensure proper offline handling
+
+## Refactoring Triggers
+- Duplicate code (Rule of Three)
+- Long methods/classes
+- Feature envy
+- Data clumps
+- Divergent change
+- Shotgun surgery
+- Firebase-specific triggers:
+  - Repeated Firebase configuration
+  - Complex Firestore queries
+  - Inconsistent error handling
+  - Mixed Firebase and business logic
+
+## Firebase Environment Management
+```typescript
+// ✅ Good: Environment-specific configurations
+const getFirebaseConfig = () => {
+  const env = process.env.NODE_ENV;
+  
+  switch (env) {
+    case 'production':
+      return productionConfig;
+    case 'staging':
+      return stagingConfig;
+    default:
+      return developmentConfig;
+  }
+};
+```
+
+## Final Checklist
+Before committing, ensure:
+- [ ] All tests pass (including Firebase Emulator tests)
+- [ ] No linting errors
+- [ ] No console logs
+- [ ] No commented code
+- [ ] No TODOs without tickets
+- [ ] Performance acceptable (Firebase operations optimized)
+- [ ] Security considered (Firebase security rules reviewed)
+- [ ] Documentation updated
+- [ ] Firebase Emulator Suite tests pass
+- [ ] Firestore security rules validated
+- [ ] Firebase Functions deploy successfully
+- [ ] No hardcoded Firebase configurations
+
+Remember: **Clean code reads like well-written prose**. Optimize for readability and maintainability over cleverness, especially when working with Firebase's async operations and real-time features.
+
+## Firebase-Specific Anti-Patterns to Avoid
+
+❌ **Don't:**
+- Mix Firebase SDK calls with business logic
+- Ignore Firebase error codes
+- Use Firebase admin SDK in client code
+- Hardcode Firestore collection names
+- Skip Firebase security rules testing
+- Use Firebase in synchronous patterns
+- Ignore Firebase offline capabilities
+
+✅ **Do:**
+- Abstract Firebase operations behind service layers
+- Handle Firebase-specific errors appropriately  
+- Use proper Firebase SDK for client/server contexts
+- Define collection names as constants
+- Test security rules thoroughly
+- Embrace Firebase's async nature
+- Design for offline-first experiences
