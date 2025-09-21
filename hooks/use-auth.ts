@@ -49,7 +49,7 @@ export const useAuth = () => {
     return true
   }, [])
 
-  const signup = useCallback(async (userData: Omit<User, 'id' | 'role'>) => {
+  const signup = useCallback(async (userData: Omit<User, 'id' | 'role'> & { password?: string }) => {
     const { name, email, phone, password } = userData
     if (!email || !password) throw new Error('이메일과 비밀번호가 필요합니다.')
     const cred = await createUserWithEmailAndPassword(auth, email, password)

@@ -11,6 +11,7 @@
     "deploy": "vite build && firebase deploy --only hosting"
   },
   "dependencies": {
+    "@dataconnect/generated": "file:src/dataconnect-generated",
     "@material/web": "^2.4.0",
     "clsx": "^2.1.1",
     "firebase": "^10.14.0",

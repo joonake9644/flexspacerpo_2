@@ -55,7 +55,7 @@ export default function Home() {
     }
   }
 
-  const handleSignup = async (userData: Omit<User, 'id' | 'role'>): Promise<boolean> => {
+  const handleSignup = async (userData: Omit<User, 'id' | 'role'> & { password?: string }): Promise<boolean> => {
     try {
       await signup(userData)
       return true
