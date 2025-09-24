@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { User, ActiveTab } from '@/types'
-import { Home, Calendar, BookOpen, Settings, Users, LogOut, Briefcase } from 'lucide-react'
+import { Home, Calendar, BookOpen, Settings, Users, LogOut, Briefcase, Menu, X } from 'lucide-react'
 import { PushNotificationButton } from './PushNotificationButton'
 
 interface NavigationProps {
@@ -12,6 +12,7 @@ interface NavigationProps {
 
 const Navigation: React.FC<NavigationProps> = ({ currentUser, activeTab, setActiveTab, onLogout }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const navButtonClasses = 'flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200'
@@ -35,6 +36,11 @@ const Navigation: React.FC<NavigationProps> = ({ currentUser, activeTab, setActi
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTab(tab)
+    setIsMobileMenuOpen(false)
+  }
+
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-40">
       <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -47,36 +53,44 @@ const Navigation: React.FC<NavigationProps> = ({ currentUser, activeTab, setActi
           </div>
 
           <nav className="hidden md:flex space-x-2">
-            <button onClick={() => setActiveTab('dashboard')} className={`${navButtonClasses} ${activeTab === 'dashboard' ? activeClasses.dashboard : inactiveClasses}`}>
+            <button onClick={() => handleTabChange('dashboard')} className={`${navButtonClasses} ${activeTab === 'dashboard' ? activeClasses.dashboard : inactiveClasses}`}>
               <Home className="w-4 h-4" />
               <span>대시보드 / Dashboard</span>
             </button>
-            <button onClick={() => setActiveTab('booking')} className={`${navButtonClasses} ${activeTab === 'booking' ? activeClasses.booking : inactiveClasses}`}>
+            <button onClick={() => handleTabChange('booking')} className={`${navButtonClasses} ${activeTab === 'booking' ? activeClasses.booking : inactiveClasses}`}>
               <Calendar className="w-4 h-4" />
               <span>체육관 대관 / Booking</span>
             </button>
-            <button onClick={() => setActiveTab('program')} className={`${navButtonClasses} ${activeTab === 'program' ? activeClasses.program : inactiveClasses}`}>
+            <button onClick={() => handleTabChange('program')} className={`${navButtonClasses} ${activeTab === 'program' ? activeClasses.program : inactiveClasses}`}>
               <BookOpen className="w-4 h-4" />
               <span>프로그램 / Program</span>
             </button>
 
             {currentUser.role === 'admin' && (
               <>
-                <button onClick={() => setActiveTab('admin')} className={`${navButtonClasses} ${activeTab === 'admin' ? activeClasses.admin : inactiveClasses}`}>
+                <button onClick={() => handleTabChange('admin')} className={`${navButtonClasses} ${activeTab === 'admin' ? activeClasses.admin : inactiveClasses}`}>
                   <Settings className="w-4 h-4" />
                   <span>운영 관리 / Operations</span>
                 </button>
-                <button onClick={() => setActiveTab('facilities')} className={`${navButtonClasses} ${activeTab === 'facilities' ? activeClasses.facilities : inactiveClasses}`}>
+                <button onClick={() => handleTabChange('facilities')} className={`${navButtonClasses} ${activeTab === 'facilities' ? activeClasses.facilities : inactiveClasses}`}>
                   <Briefcase className="w-4 h-4" />
                   <span>시설 관리 / Facilities</span>
                 </button>
-                <button onClick={() => setActiveTab('userManagement')} className={`${navButtonClasses} ${activeTab === 'userManagement' ? activeClasses.userManagement : inactiveClasses}`}>
+                <button onClick={() => handleTabChange('userManagement')} className={`${navButtonClasses} ${activeTab === 'userManagement' ? activeClasses.userManagement : inactiveClasses}`}>
                   <Users className="w-4 h-4" />
                   <span>회원 관리 / Users</span>
                 </button>
               </>
             )}
           </nav>
+
+          {/* Mobile menu button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
 
         <div className="relative" ref={dropdownRef}>
@@ -108,6 +122,43 @@ const Navigation: React.FC<NavigationProps> = ({ currentUser, activeTab, setActi
           )}
         </div>
       </div>
+
+      {/* Mobile menu */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-white border-b border-gray-200">
+          <div className="px-4 py-2 space-y-1">
+            <button onClick={() => handleTabChange('dashboard')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'dashboard' ? activeClasses.dashboard : inactiveClasses}`}>
+              <Home className="w-4 h-4" />
+              <span>대시보드 / Dashboard</span>
+            </button>
+            <button onClick={() => handleTabChange('booking')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'booking' ? activeClasses.booking : inactiveClasses}`}>
+              <Calendar className="w-4 h-4" />
+              <span>체육관 대관 / Booking</span>
+            </button>
+            <button onClick={() => handleTabChange('program')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'program' ? activeClasses.program : inactiveClasses}`}>
+              <BookOpen className="w-4 h-4" />
+              <span>프로그램 / Program</span>
+            </button>
+
+            {currentUser.role === 'admin' && (
+              <>
+                <button onClick={() => handleTabChange('admin')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'admin' ? activeClasses.admin : inactiveClasses}`}>
+                  <Settings className="w-4 h-4" />
+                  <span>운영 관리 / Operations</span>
+                </button>
+                <button onClick={() => handleTabChange('facilities')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'facilities' ? activeClasses.facilities : inactiveClasses}`}>
+                  <Briefcase className="w-4 h-4" />
+                  <span>시설 관리 / Facilities</span>
+                </button>
+                <button onClick={() => handleTabChange('userManagement')} className={`w-full text-left ${navButtonClasses} ${activeTab === 'userManagement' ? activeClasses.userManagement : inactiveClasses}`}>
+                  <Users className="w-4 h-4" />
+                  <span>회원 관리 / Users</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

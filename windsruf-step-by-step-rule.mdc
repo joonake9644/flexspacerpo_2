@@ -1,256 +1,401 @@
 ---
-description: 모든 AI 어시스턴트(Cursor, Windsurf, GitHub Copilot 등)를 위한 Firebase 특화 개발 가이드라인
-globs: 
+description: FlexSpace Pro 체육관 관리 시스템 전용 AI 개발 가이드라인 - React + TypeScript + Firebase + Vite
+globs:
 alwaysApply: true
 ---
 
-## Core Directive
-You are a senior software engineer AI assistant specializing in Firebase-based web applications. For EVERY task request, you MUST follow the three-phase process below in exact order. Each phase must be completed with expert-level precision and Firebase best practices.
+## 🎯 FlexSpace Pro 개발 지침서
 
-## Guiding Principles
-- **Firebase-First Architecture**: Leverage Firebase services optimally and follow Firebase best practices
-- **Minimalistic Approach**: Implement high-quality, clean solutions while avoiding unnecessary complexity
-- **Expert-Level Standards**: Every output must meet professional software engineering standards for Firebase development
-- **Real-time & Offline Considerations**: Always consider Firebase's real-time capabilities and offline scenarios
-- **Security-First Mindset**: Implement proper Firebase security rules and authentication patterns
+FlexSpace Pro는 체육관 통합 관리 시스템으로, React 18 + TypeScript + Vite + Firebase + Tailwind CSS 기술 스택을 사용합니다. 모든 AI 어시스턴트는 이 가이드라인을 엄격히 준수하여 일관성 있고 고품질의 코드를 생성해야 합니다.
 
----
+## 🏗️ 프로젝트 아키텍처 개요
 
-## Phase 1: Codebase Exploration & Firebase Analysis
-**REQUIRED ACTIONS:**
-1. **Systematic File Discovery**
-   - List ALL potentially relevant files, directories, and modules
-   - Identify Firebase-related files (firebase.json, firestore.rules, storage.rules, functions/)
-   - Search for Firebase SDK imports and usage patterns
-   - Examine Firebase configuration and initialization files
-   - Check for existing Firebase Functions and their triggers
+### 기술 스택
+- **프론트엔드**: React 18.2.0+ (함수형 컴포넌트 + Hooks)
+- **타입 시스템**: TypeScript 5.0+
+- **빌드 도구**: Vite 5.0+
+- **스타일링**: Tailwind CSS 3.3+
+- **아이콘**: Lucide React 0.400+
+- **백엔드**: Firebase 10.0+ (Auth, Firestore, Functions, Storage)
 
-2. **Firebase Architecture Analysis**
-   - Document Firebase services in use (Auth, Firestore, Functions, Storage, Hosting, etc.)
-   - Identify Firebase SDK version and patterns (v9+ modular vs legacy)
-   - Analyze existing Firestore data models and security rules
-   - Review Firebase Functions structure and deployment patterns
-   - Check authentication flows and user role management
-
-3. **Convention & Style Analysis**
-   - Document coding conventions (naming, formatting, architecture patterns)
-   - Identify existing Firebase-specific patterns (error handling, real-time listeners, offline support)
-   - Note framework/library usage patterns (Next.js + Firebase integration)
-   - Catalog Firebase security rules complexity and structure
-
-**OUTPUT FORMAT:**
+### 프로젝트 구조
 ```
-### Codebase & Firebase Analysis Results
-**Firebase Configuration Found:**
-- Firebase project: [project details]
-- Services in use: [Auth/Firestore/Functions/Storage/etc.]
-- SDK version: [v9+/v10+ modular or legacy]
-
-**Relevant Files Found:**
-- [file_path]: [brief description and Firebase relevance]
-- firebase.json: [configuration details]
-- firestore.rules: [security rules complexity]
-- functions/: [existing functions and triggers]
-
-**Firebase Patterns Identified:**
-- Data modeling: [Firestore collection/document patterns]
-- Authentication: [Auth flow and user management]
-- Security: [RLS patterns, custom claims usage]
-- Real-time: [listener usage patterns]
-
-**Code Conventions Identified:**
-- Naming: [Firebase-specific naming conventions]
-- Architecture: [Firebase integration patterns]
-- Error handling: [Firebase error handling approaches]
+flexspace-pro/
+├── components/           # React 컴포넌트
+│   ├── AdminSection.tsx     # 관리자 운영 관리
+│   ├── BookingSection.tsx   # 체육관 대관
+│   ├── ProgramSection.tsx   # 프로그램 관리
+│   ├── Dashboard.tsx        # 대시보드
+│   ├── Navigation.tsx       # 네비게이션
+│   ├── LoginForm.tsx        # 로그인 폼
+│   ├── UserManagement.tsx   # 회원 관리
+│   └── DashboardCalendar.tsx # 캘린더
+├── hooks/               # 커스텀 React Hooks
+│   ├── use-auth.ts         # 인증 훅
+│   └── use-firestore.ts    # Firestore 데이터 훅
+├── types.ts            # TypeScript 타입 정의
+├── utils.ts            # 유틸리티 함수
+├── firebase.ts         # Firebase 설정
+└── App.tsx            # 메인 애플리케이션
 ```
 
 ---
 
-## Phase 2: Firebase Implementation Planning
-**REQUIRED ACTIONS:**
-Based on Phase 1 findings, create a detailed implementation roadmap that considers Firebase constraints and capabilities.
+## 📋 Phase 1: FlexSpace Pro 코드베이스 분석
 
-**OUTPUT FORMAT:**
-```markdown
-## Firebase Implementation Plan
+### 1.1 필수 확인 사항
+**모든 작업 시작 전 다음을 반드시 확인:**
 
-### Module: [Module Name]
-**Summary:** [1-2 sentence description of Firebase integration needed]
+1. **기존 파일 존재 여부 확인**
+   ```bash
+   # 다음 파일들의 존재 여부를 먼저 확인
+   - components/[작업할 컴포넌트].tsx
+   - hooks/use-auth.ts
+   - hooks/use-firestore.ts
+   - types.ts
+   - utils.ts
+   - firebase.ts
+   ```
 
-**Firebase Services Required:**
-- [ ] Authentication (roles: [specify roles])
-- [ ] Firestore (collections: [specify collections])
-- [ ] Functions (triggers: [specify triggers])
-- [ ] Storage (for: [specify use case])
-- [ ] Other: [specify]
+2. **타입 정의 확인**
+   - `types.ts`에서 필요한 인터페이스가 이미 정의되어 있는지 확인
+   - 새로운 타입 추가 시 기존 타입과의 호환성 검증
 
-**Tasks:**
-- [ ] [Firebase-specific implementation task]
-- [ ] [Security rules implementation]
-- [ ] [Real-time listener setup]
-- [ ] [Offline handling implementation]
+3. **Firebase 설정 상태 확인**
+   - `firebase.ts` 파일의 현재 설정 내용
+   - 사용 중인 Firebase 서비스 (Auth, Firestore, Functions, Storage)
 
-**Acceptance Criteria:**
-- [ ] [Firebase security rules tested and validated]
-- [ ] [Real-time updates working correctly]
-- [ ] [Offline scenarios handled gracefully]
-- [ ] [Performance within Firebase quotas/limits]
-
-**Security Considerations:**
-- [ ] [Specific security rule requirements]
-- [ ] [User role and permission checks]
-- [ ] [Data validation rules]
-
-### Module: [Next Module Name]
-[Repeat structure above]
-```
-
----
-
-## Phase 3: Firebase Implementation Execution
-**REQUIRED ACTIONS:**
-1. Implement each module following Firebase best practices from Phase 2
-2. Verify ALL Firebase security rules and real-time functionality
-3. Test with Firebase Emulator Suite when applicable
-4. Ensure code adheres to Firebase SDK patterns identified in Phase 1
-
-**FIREBASE-SPECIFIC QUALITY GATES:**
-- [ ] Firebase SDK usage follows modular v10+ patterns
-- [ ] Security rules implemented and tested
-- [ ] Real-time listeners properly managed (cleanup functions)
-- [ ] Offline scenarios considered and handled
-- [ ] Error handling includes Firebase-specific error codes
-- [ ] Performance optimized (query efficiency, read/write minimization)
-- [ ] All acceptance criteria validated
-
-**CODE IMPLEMENTATION REQUIREMENTS:**
+### 1.2 FlexSpace Pro 데이터 모델
 ```typescript
-// Always use proper Firebase SDK imports (v10+)
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
+// 핵심 타입 정의 - types.ts에서 확인 필요
+export type UserRole = 'user' | 'admin'
+export type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed'
+export type BookingCategory = 'class' | 'event' | 'club' | 'personal'
+export type ProgramLevel = 'beginner' | 'intermediate' | 'advanced'
+export type ProgramCategory = 'yoga' | 'pilates' | 'fitness' | 'dance' | 'badminton' | 'pickleball'
+export type ActiveTab = 'dashboard' | 'booking' | 'program' | 'admin' | 'userManagement' | 'facilities'
+```
 
-// Always include error handling for Firebase operations
-try {
-  // Firebase operation
-} catch (error) {
-  if (error instanceof FirebaseError) {
-    // Handle specific Firebase errors
-    console.error('Firebase error:', error.code, error.message);
-  }
+### 1.3 Firebase 컬렉션 구조
+```typescript
+// COLLECTIONS 상수 - types.ts에서 확인
+export const COLLECTIONS = {
+  USERS: 'users',
+  BOOKINGS: 'bookings',
+  PROGRAMS: 'programs',
+  APPLICATIONS: 'applications',
+  FACILITIES: 'facilities',
+  NOTIFICATIONS: 'notifications',
+  SYSTEM_CONFIG: 'system_config',
+} as const
+```
+
+---
+
+## 📝 Phase 2: FlexSpace Pro 개발 계획 수립
+
+### 2.1 코드 중복 방지 원칙
+**절대적 규칙: 기존 코드를 먼저 읽고 분석한 후, 누락된 기능만 추가**
+
+1. **기존 컴포넌트 확인 절차**
+   ```typescript
+   // 1. 파일 존재 확인
+   // 2. 기존 Props 인터페이스 확인
+   // 3. 현재 구현된 기능 목록 작성
+   // 4. 요청된 기능과 비교하여 누락 부분만 식별
+   // 5. 기존 코드 스타일 및 패턴 유지
+   ```
+
+2. **Hook 중복 방지**
+   ```typescript
+   // use-auth.ts와 use-firestore.ts 기존 기능 확인 필수
+   // 새로운 함수 추가 시 기존 함수와 중복되지 않도록 주의
+   ```
+
+### 2.2 FlexSpace Pro 컴포넌트별 역할
+
+#### Dashboard.tsx - 대시보드
+- **일반 사용자**: 개인 통계, 최근 활동, 개인 캘린더
+- **관리자**: 전체 통계, 대기 신청, 전체 캘린더
+- **공통**: 역할별 조건부 렌더링
+
+#### BookingSection.tsx - 체육관 대관
+- 목록 뷰 / 캘린더 뷰 전환
+- 신규 대관 신청 폼
+- 대관 상태 관리 (pending → approved → completed)
+- 반복 대관 지원
+
+#### ProgramSection.tsx - 프로그램 관리
+- 프로그램 카드 그리드 레이아웃
+- 검색 및 다중 필터링 (카테고리, 요일, 시간, 레벨)
+- D-Day 카운터 표시
+- 프로그램 신청 처리
+
+#### AdminSection.tsx - 관리자 운영
+- 수강생/팀 직접 등록
+- 대기중인 신청 승인/거절
+- 운영 통계 대시보드
+- 관리자 전용 기능
+
+### 2.3 개발 우선순위
+1. **Core Infrastructure**: 인증, 데이터 연동, 네비게이션
+2. **User Features**: 대시보드, 대관 신청, 프로그램 신청
+3. **Admin Features**: 관리자 도구, 승인 시스템
+4. **Optimization**: 성능 최적화, 에러 처리
+
+---
+
+## 🔧 Phase 3: FlexSpace Pro 구현 실행
+
+### 3.1 React 컴포넌트 구현 규칙
+
+#### 3.1.1 컴포넌트 기본 구조
+```typescript
+import React, { useState, useMemo, useCallback } from 'react'
+import { User, Booking, Program, ActiveTab } from '../types'
+import { Calendar, Users, BookOpen } from 'lucide-react'
+
+interface ComponentProps {
+  // Props 타입 정의
 }
 
-// Always cleanup real-time listeners
-useEffect(() => {
-  const unsubscribe = onSnapshot(docRef, (snapshot) => {
-    // Handle real-time updates
-  });
-  
-  return unsubscribe; // Cleanup function
-}, []);
+const ComponentName: React.FC<ComponentProps> = ({ ...props }) => {
+  // 1. useState 훅들
+  // 2. useMemo로 계산된 값들
+  // 3. useCallback으로 최적화된 함수들
+  // 4. JSX 반환
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      {/* Tailwind CSS 클래스 사용 */}
+    </div>
+  )
+}
+
+export default ComponentName
+```
+
+#### 3.1.2 Tailwind CSS 스타일 가이드
+```typescript
+// 카드 스타일
+"bg-white rounded-2xl shadow-sm border border-gray-100"
+
+// 버튼 스타일
+"px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+
+// 상태 배지
+"px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800"
+
+// 반응형 그리드
+"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+```
+
+### 3.2 Firebase 연동 패턴
+
+#### 3.2.1 인증 Hook (use-auth.ts)
+```typescript
+interface UseAuthReturn {
+  user: User | null
+  loading: boolean
+  error: string | null
+  signInWithGoogle: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
+  isAdmin: boolean
+  isAuthenticated: boolean
+}
+```
+
+#### 3.2.2 Firestore Hook (use-firestore.ts)
+```typescript
+export const useFirestore = () => {
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [programs, setPrograms] = useState<Program[]>([])
+  const [applications, setApplications] = useState<ProgramApplication[]>([])
+
+  // CRUD 함수들
+  const createBooking = async (data: CreateBookingData) => { /* */ }
+  const updateBookingStatus = async (id: string, status: BookingStatus) => { /* */ }
+
+  return {
+    bookings, programs, applications,
+    createBooking, updateBookingStatus,
+    loading, error
+  }
+}
+```
+
+### 3.3 상태 관리 패턴
+
+#### 3.3.1 Props Drilling 방식 사용
+```typescript
+// App.tsx에서 모든 상태 관리
+function App() {
+  const { user, isAdmin } = useAuth()
+  const { bookings, programs, applications, ...crudFunctions } = useFirestore()
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard')
+
+  // 컴포넌트별 필요한 데이터와 함수만 전달
+}
+```
+
+#### 3.3.2 성능 최적화
+```typescript
+// useMemo로 계산 비용이 큰 데이터 최적화
+const myBookings = useMemo(() =>
+  bookings.filter(b => b.userId === user?.id)
+    .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+  [bookings, user?.id]
+)
+
+// useCallback으로 함수 최적화
+const handleApply = useCallback(async (programId: string) => {
+  // 프로그램 신청 로직
+}, [user, applications])
+```
+
+### 3.4 에러 처리 및 사용자 피드백
+
+#### 3.4.1 Firebase 에러 처리
+```typescript
+try {
+  await createBooking(bookingData)
+  // 성공 피드백
+} catch (error) {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case 'permission-denied':
+        setError('권한이 없습니다.')
+        break
+      case 'unavailable':
+        setError('서비스가 일시적으로 사용할 수 없습니다.')
+        break
+      default:
+        setError('오류가 발생했습니다. 다시 시도해주세요.')
+    }
+  }
+}
+```
+
+#### 3.4.2 로딩 상태 관리
+```typescript
+const [loading, setLoading] = useState(false)
+
+const handleSubmit = async () => {
+  setLoading(true)
+  try {
+    // 비동기 작업
+  } finally {
+    setLoading(false)
+  }
+}
 ```
 
 ---
 
-## Firebase-Specific Considerations
+## 🔒 FlexSpace Pro 보안 규칙
 
-### Security Rules Validation
-Before completing any Firestore-related task:
+### Firestore Security Rules
 ```javascript
-// Example security rule structure to follow
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Implement least-privilege access
-    match /collection/{document} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
+    // 사용자는 자신의 데이터만 접근
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 대관 데이터
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null &&
+        (request.auth.uid == resource.data.userId ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // 관리자만 전체 접근
+    match /{document=**} {
+      allow read, write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
   }
 }
 ```
 
-### Real-time Updates Pattern
-```typescript
-// Standard pattern for real-time data subscription
-const [data, setData] = useState([]);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState(null);
+---
 
-useEffect(() => {
-  const q = query(collection(db, 'collectionName'));
-  
-  const unsubscribe = onSnapshot(q, 
-    (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setData(items);
-      setLoading(false);
-    },
-    (error) => {
-      console.error('Firestore error:', error);
-      setError(error.message);
-      setLoading(false);
-    }
-  );
+## ✅ 품질 검증 체크리스트
 
-  return unsubscribe;
-}, []);
-```
+### 코드 품질
+- [ ] TypeScript 컴파일 오류 없음
+- [ ] ESLint 경고 최소화
+- [ ] 기존 코드 스타일 일관성 유지
+- [ ] 중복 코드 없음 (기존 파일 확인 완료)
 
-### Firebase Functions Integration
-```typescript
-// Client-side function calls
-import { getFunctions, httpsCallable } from 'firebase/functions';
+### 기능 검증
+- [ ] 사용자 인증 플로우 정상 동작
+- [ ] 역할별 접근 제어 정확성
+- [ ] 실시간 데이터 업데이트 동작
+- [ ] 반응형 디자인 적용
 
-const functions = getFunctions();
-const myFunction = httpsCallable(functions, 'myFunction');
+### Firebase 연동
+- [ ] Firestore 보안 규칙 적용
+- [ ] 실시간 리스너 정상 동작
+- [ ] 에러 처리 완전성
+- [ ] 성능 최적화 (불필요한 읽기/쓰기 방지)
 
-try {
-  const result = await myFunction({ data: 'example' });
-  console.log('Function result:', result.data);
-} catch (error) {
-  console.error('Function error:', error);
-}
-```
-
-## Success Validation
-Before completing any Firebase task, confirm:
-- ✅ All three phases completed sequentially
-- ✅ Firebase security rules implemented and tested
-- ✅ Real-time functionality working correctly
-- ✅ Offline scenarios considered
-- ✅ Firebase Emulator Suite used for testing (when applicable)
-- ✅ Performance optimized for Firebase quotas
-- ✅ Error handling includes Firebase-specific patterns
-
-## AI Assistant Compatibility Notes
-
-### For Cursor AI
-- Reference .cursorrules file for additional context
-- Leverage full project understanding for Firebase integration
-
-### For Windsurf
-- Explicitly mention "following this project's Firebase patterns"
-- Reference firebase.json and firestore.rules files for context
-
-### For GitHub Copilot
-- Use clear function names and comments to guide suggestions
-- Maintain consistent Firebase SDK import patterns
-
-### For All AI Assistants
-- Always specify Firebase service requirements clearly
-- Mention security and performance considerations explicitly
-- Request Firebase Emulator Suite usage when appropriate
-
-## Response Structure
-Always structure your response as:
-1. **Phase 1 Results**: [Codebase and Firebase analysis findings]
-2. **Phase 2 Plan**: [Firebase implementation roadmap]  
-3. **Phase 3 Implementation**: [Firebase-optimized code with validation]
+### FlexSpace Pro 특화 검증
+- [ ] 대관 신청 플로우 완전성
+- [ ] 프로그램 신청 시스템 정상 동작
+- [ ] 관리자 승인 시스템 동작
+- [ ] 캘린더 뷰 정확성
+- [ ] D-Day 계산 정확성
 
 ---
 
-**Remember**: Every implementation must prioritize Firebase security, real-time capabilities, and offline resilience while maintaining clean, maintainable code that follows Firebase best practices.
+## 🚨 중요 주의사항
+
+### 절대 금지 사항
+1. **기존 파일을 읽지 않고 새로 작성하는 것**
+2. **동일한 기능의 중복 구현**
+3. **기존 타입 정의 무시**
+4. **Firebase 보안 규칙 미적용**
+5. **성능 고려 없는 구현**
+
+### 필수 준수 사항
+1. **Read 도구로 기존 파일 확인 후 작업**
+2. **타입 정의 재사용 (types.ts 활용)**
+3. **기존 스타일 가이드 유지**
+4. **React 18 Hooks 패턴 사용**
+5. **Tailwind CSS 클래스 활용**
+
+---
+
+## 🎯 응답 구조 템플릿
+
+모든 AI 어시스턴트는 다음 구조로 응답해야 합니다:
+
+```
+## 📋 Phase 1: 기존 코드 분석
+- 확인한 파일: [파일 목록]
+- 기존 기능: [현재 구현된 기능]
+- 누락 기능: [추가해야 할 기능]
+
+## 📝 Phase 2: 구현 계획
+- 추가할 기능: [구체적 기능 목록]
+- 사용할 타입: [types.ts의 기존 타입]
+- 연동할 Hook: [use-auth.ts, use-firestore.ts]
+
+## 🔧 Phase 3: 코드 구현
+[실제 코드 구현]
+
+## ✅ 검증 결과
+- TypeScript 컴파일: [성공/실패]
+- 기능 테스트: [항목별 결과]
+- 보안 검증: [Firebase 규칙 적용 여부]
+```
+
+---
+
+**FlexSpace Pro는 체육관 통합 관리의 혁신입니다. 모든 코드는 사용자 경험과 관리 효율성을 최우선으로 고려하여 구현되어야 합니다.**

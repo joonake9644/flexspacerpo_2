@@ -222,6 +222,47 @@ export const subscribeToPush = functions.https.onCall(async (data, context) => {
   }
 });
 
+/**
+ * Updates a user's email address in Auth and Firestore.
+ */
+export const updateUserEmail = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to change email.');
+  }
+
+  const { newEmail } = data;
+  if (!newEmail || typeof newEmail !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'A valid new email must be provided.');
+  }
+
+  const uid = context.auth.uid;
+
+  try {
+    // Update email in Firebase Authentication
+    await admin.auth().updateUser(uid, { email: newEmail });
+
+    // Update email in Firestore
+    const userRef = db.collection('users').doc(uid);
+    await userRef.update({ email: newEmail });
+
+    // Optionally, trigger a verification email for the new address
+    // Note: The client-side `updateEmail` function already handles this, 
+    // but this ensures it happens even if only the function is called.
+    // await admin.auth().generateEmailVerificationLink(newEmail);
+
+    return { success: true, message: 'Email updated successfully.' };
+
+  } catch (error: any) {
+    console.error('Error updating email:', error);
+    // Provide a more specific error message if possible
+    if (error.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'The new email address is already in use by another account.');
+    }
+    throw new functions.https.HttpsError('internal', 'An unexpected error occurred while updating the email.');
+  }
+});
+
+
 // --- ?대찓??諛??몄떆 ?뚮┝ 愿??---
 
 const transporter = nodemailer.createTransport({

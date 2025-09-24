@@ -27,6 +27,14 @@ export const formatPhoneNumberForDisplay = (phone?: string): string => {
   return phone
 }
 
+// 전화번호 입력 시 자동 포맷팅 (실시간 입력용)
+export const formatPhoneNumberForInput = (value: string): string => {
+  const cleaned = value.replace(/\D/g, '')
+  if (cleaned.length <= 3) return cleaned
+  if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`
+  return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`
+}
+
 // Firebase Timestamp → 문자열 포맷
 export const formatFirebaseTimestamp = (
   timestamp: Timestamp | null | undefined,
@@ -70,12 +78,14 @@ export const minutesToTimeString = (minutes: number): string => {
 // Firebase 오류 코드 번역
 export const translateFirebaseError = (errorCode: string): string => {
   const errorMessages: Record<string, string> = {
-    'auth/user-not-found': '등록되지 않은 사용자입니다.',
+    'auth/user-not-found': '미가입자입니다. 회원가입을 해주세요.',
     'auth/wrong-password': '비밀번호가 일치하지 않습니다.',
     'auth/email-already-in-use': '이미 사용 중인 이메일입니다.',
     'auth/weak-password': '비밀번호가 너무 간단합니다. 6자 이상 입력해주세요.',
     'auth/invalid-email': '올바른 이메일 형식이 아닙니다.',
-    'auth/too-many-requests': '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
+    'auth/invalid-credential': '이메일 또는 비밀번호가 잘못되었습니다. 미가입자는 회원가입을 먼저 해주세요.',
+    'auth/invalid-login-credentials': '로그인 정보가 잘못되었습니다. 미가입자는 회원가입을 먼저 해주세요.',
+    'auth/too-many-requests': '로그인 시도가 너무 많습니다. 잠시 후 다시 시도하거나 브라우저 캐시를 삭제해 주세요.',
     'firestore/permission-denied': '접근 권한이 없습니다.',
     'firestore/unavailable': '서비스가 일시적으로 사용 불가합니다.',
     'firestore/deadline-exceeded': '요청 시간이 초과되었습니다.',
@@ -85,8 +95,9 @@ export const translateFirebaseError = (errorCode: string): string => {
     'functions/permission-denied': '함수 실행 권한이 없습니다.',
     'functions/unavailable': '서버 함수가 일시적으로 사용 불가합니다.',
   }
-  return errorMessages[errorCode] || '알 수 없는 오류가 발생했습니다.'
+  return errorMessages[errorCode] || '로그인에 실패했습니다. 이메일/비밀번호를 확인하거나 회원가입을 먼저 진행해주세요.'
 }
+
 
 // 예약 상태 번역
 export const translateBookingStatus = (status: string): string => {
@@ -183,3 +194,12 @@ export const requireEnv = (name: string): string => {
   }
   return value
 }
+
+export const getFirebaseErrorMessage = (error: any): string => {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const errorCodeMatch = rawMessage.match(/auth\/([\w-]+)/);
+  if (errorCodeMatch && errorCodeMatch[0]) {
+    return translateFirebaseError(errorCodeMatch[0]);
+  }
+  return translateFirebaseError(rawMessage);
+};

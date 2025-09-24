@@ -17,6 +17,7 @@ export interface User {
   phone?: string | null
   role: UserRole
   isActive?: boolean
+  photoURL?: string
 }
 
 export type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed'
@@ -26,6 +27,7 @@ export interface Booking {
   id: string
   userId?: string
   userName?: string
+  userEmail?: string
   facilityId: string
   startDate: string // YYYY-MM-DD
   endDate: string // YYYY-MM-DD
@@ -34,8 +36,10 @@ export interface Booking {
   purpose: string
   organization?: string
   category: BookingCategory
+  numberOfParticipants?: number
   status: BookingStatus
   rejectionReason?: string
+  adminNotes?: string
   recurrenceRule?: { days: number[] }
   createdAt?: any
   updatedAt?: any
@@ -50,6 +54,7 @@ export interface Program {
   description: string
   instructor?: string
   capacity: number
+  enrolled?: number
   scheduleDays: number[]
   startTime: string
   endTime: string
@@ -68,12 +73,27 @@ export interface ProgramApplication {
   userId: string
   status: ApplicationStatus
   appliedAt?: any
+  programTitle?: string
+  userName?: string
+  userEmail?: string
+  rejectionReason?: string
+  updatedAt?: any
+}
+
+// 시설 중복 사용 정책
+export interface FacilityBookingPolicy {
+  allowOverlap: boolean        // 중복 허용 여부 (기본값: false - 단독사용)
+  maxConcurrent?: number       // 동시 사용 가능 팀 수 (중복 허용 시에만)
+  timeSlotMinutes?: number     // 시간 단위 (분, 기본값: 60분)
 }
 
 export interface Facility {
   id: string
   name: string
-  bufferMinutes?: number
+  type?: string                // 시설 종류 (gym, field, court 등)
+  capacity?: number            // 수용 인원
+  bufferMinutes?: number       // 기존 필드 유지
+  bookingPolicy?: FacilityBookingPolicy  // 중복 사용 정책 (선택사항)
 }
 
 export interface CreateBookingData {

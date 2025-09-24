@@ -11,13 +11,32 @@ const FacilityManagement: React.FC = () => {
   const [facilityToEdit, setFacilityToEdit] = useState<Facility | null>(null)
 
   const initialFormState: Omit<Facility, 'id'> = {
-    name: '', description: '', type: 'gym', capacity: 1, bufferMinutes: 0,
-    amenities: [], location: '', isActive: true,
+    name: '',
+    type: 'gym',
+    capacity: 1,
+    bufferMinutes: 0,
+    bookingPolicy: {
+      allowOverlap: false,
+      maxConcurrent: 1,
+      timeSlotMinutes: 60
+    }
   }
   const [formState, setFormState] = useState(initialFormState)
 
   const openModalForNew = () => { setFacilityToEdit(null); setFormState(initialFormState); setIsModalOpen(true) }
-  const openModalForEdit = (facility: Facility) => { setFacilityToEdit(facility); setFormState(facility); setIsModalOpen(true) }
+  const openModalForEdit = (facility: Facility) => {
+    setFacilityToEdit(facility)
+    // 기존 시설이 bookingPolicy가 없으면 기본값 설정
+    setFormState({
+      ...facility,
+      bookingPolicy: facility.bookingPolicy || {
+        allowOverlap: false,
+        maxConcurrent: 1,
+        timeSlotMinutes: 60
+      }
+    })
+    setIsModalOpen(true)
+  }
   const closeModal = () => { setIsModalOpen(false); setFacilityToEdit(null) }
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -77,22 +96,39 @@ const FacilityManagement: React.FC = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">종류</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">수용 인원</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">버퍼(분)</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">중복 정책</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {facilities.map(facility => (
-              <tr key={facility.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{facility.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.type}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.capacity}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.bufferMinutes}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+            {facilities.map(facility => {
+              const policy = facility.bookingPolicy
+              const policyText = policy?.allowOverlap
+                ? `🔄 중복허용 (최대${policy.maxConcurrent || 1}팀)`
+                : '🚫 단독사용'
+
+              return (
+                <tr key={facility.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{facility.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.type}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.capacity}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{facility.bufferMinutes}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      policy?.allowOverlap
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {policyText}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                   <button onClick={() => openModalForEdit(facility)} className="p-2 text-gray-500 hover:text-blue-600 rounded-lg transition-all hover:scale-110"><Edit className="w-4 h-4"/></button>
                   <button onClick={() => handleDelete(facility.id)} className="p-2 text-gray-500 hover:text-red-600 rounded-lg transition-all hover:scale-110"><Trash2 className="w-4 h-4"/></button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -126,6 +162,51 @@ const FacilityManagement: React.FC = () => {
                   <option value="room">다목적실</option>
                 </select>
               </div>
+
+              {/* 중복 사용 정책 설정 */}
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">중복 사용 설정</h4>
+                <div className="space-y-3">
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={formState.bookingPolicy?.allowOverlap || false}
+                      onChange={(e) => setFormState(prev => ({
+                        ...prev,
+                        bookingPolicy: {
+                          ...prev.bookingPolicy,
+                          allowOverlap: e.target.checked,
+                          maxConcurrent: e.target.checked ? (prev.bookingPolicy?.maxConcurrent || 2) : 1
+                        }
+                      }))}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">중복 사용 허용 (같은 시간에 여러 팀 사용 가능)</span>
+                  </label>
+
+                  {formState.bookingPolicy?.allowOverlap && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">최대 동시 사용 팀</label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="10"
+                        value={formState.bookingPolicy?.maxConcurrent || 2}
+                        onChange={(e) => setFormState(prev => ({
+                          ...prev,
+                          bookingPolicy: {
+                            ...prev.bookingPolicy,
+                            maxConcurrent: parseInt(e.target.value)
+                          }
+                        }))}
+                        className="w-full p-3 border border-gray-200 rounded-xl"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">같은 시간에 이용할 수 있는 최대 팀 수</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex space-x-3 mt-6">
                 <button type="button" onClick={closeModal} className="flex-1 py-3 px-4 border rounded-xl hover:bg-gray-50 font-medium transition-colors">취소</button>
                 <button type="submit" className="flex-1 py-3 px-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 font-medium transition-colors">{facilityToEdit ? '수정하기' : '추가하기'}</button>

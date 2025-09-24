@@ -1,54 +1,70 @@
-# FlexSpace Pro - 체육관 대관 시스템 TRD v4.0
+# TRD4 - FlexSpace Pro 기술 요구사항 문서
 
-## 1. 기술 스택
+## 📋 문서 정보
 
-### 1.1 프론트엔드
-- **프레임워크**: React 19 (TypeScript)
-- **상태 관리**: React Context API
-- **스타일링**: Tailwind CSS + clsx + tailwind-merge
-- **아이콘**: Lucide React
-- **빌드 도구**: Vite
-- **테스트**: Jest, React Testing Library
+- **프로젝트명**: FlexSpace Pro
+- **문서 유형**: 기술 요구사항 문서 (Technical Requirements Document)
+- **버전**: v4.0
+- **작성일**: 2025년 1월
+- **작성자**: Claude AI Assistant
 
-### 1.2 백엔드
-- **인프라**: Firebase
-  - Authentication: 사용자 인증
-  - Firestore: 실시간 데이터베이스
-  - Cloud Functions: 서버리스 함수
-  - Hosting: 정적 웹 호스팅
-  - Storage: 파일 저장소
+## 🛠 기술 스택
 
-### 1.3 개발 도구
-- **버전 관리**: Git, GitHub
-- **코드 품질**: ESLint, Prettier
-- **지속적 통합/배포**: GitHub Actions
-- **모니터링**: Firebase Performance Monitoring
+### Frontend
+- **React**: 18.2.0+ (함수형 컴포넌트, Hooks)
+- **TypeScript**: 5.0+ (타입 안전성)
+- **Vite**: 5.0+ (빌드 도구, 개발 서버)
+- **Tailwind CSS**: 3.3+ (유틸리티 CSS 프레임워크)
+- **Lucide React**: 0.400+ (아이콘 라이브러리)
 
----
+### Backend/Cloud
+- **Firebase Authentication**: 사용자 인증 및 권한 관리
+- **Cloud Firestore**: NoSQL 실시간 데이터베이스
+- **Firebase Functions**: 서버리스 백엔드 (Node.js 20)
+- **Firebase Storage**: 파일 및 이미지 저장소
+- **Firebase Hosting**: 정적 웹 호스팅
 
-## 2. 시스템 아키텍처
+### 개발 도구
+- **Node.js**: 20.0+
+- **npm**: 패키지 관리자
+- **ESLint**: 코드 품질 검사 도구
+- **TypeScript Compiler**: 정적 타입 검사
 
-### 2.1 전체 아키텍처
+## 🏗️ 시스템 아키텍처
+
+### 전체 아키텍처 개요
 ```
-[React SPA] → [Firebase Hosting]
+사용자 (브라우저)
+    ↓ HTTPS
+React SPA (Vite)
+    ↓ Firebase SDK
+Firebase Authentication
     ↓
-[Firebase SDK] → [Firebase Auth]
+Firebase Functions (Node.js)
     ↓
-[Firestore] ←→ [Cloud Functions]
+Cloud Firestore (NoSQL)
     ↓
-[이메일/SMS 서비스]  [푸시 알림]
+Firebase Storage (파일 저장)
 ```
 
-### 2.2 컴포넌트 구조
+### 프로젝트 구조
 ```
-src/
-├── components/     # 재사용 가능한 UI 컴포넌트
-├── hooks/         # 커스텀 React 훅
-├── pages/         # 페이지 컴포넌트
-├── services/      # API 서비스 레이어
-├── store/         # 전역 상태 관리
-├── types/         # TypeScript 타입 정의
-└── utils/         # 유틸리티 함수
+flexspace-pro/
+├── components/           # React 컴포넌트
+│   ├── AdminSection.tsx     # 관리자 운영 관리
+│   ├── BookingSection.tsx   # 체육관 대관
+│   ├── ProgramSection.tsx   # 프로그램 관리
+│   ├── Dashboard.tsx        # 대시보드
+│   ├── Navigation.tsx       # 네비게이션
+│   └── DashboardCalendar.tsx # 캘린더
+├── hooks/               # 커스텀 React Hooks
+│   ├── use-auth.ts         # 인증 관리
+│   ├── use-firestore.ts    # Firestore 데이터 관리
+│   └── use-notification.ts # 알림 관리
+├── functions/           # Firebase Functions
+├── types.ts            # TypeScript 타입 정의
+├── utils.ts            # 유틸리티 함수
+└── firebase.ts         # Firebase 설정
 ```
 
 ---
@@ -60,13 +76,13 @@ src/
 #### 3.1.1 사용자 (users)
 ```typescript
 interface User {
-  uid: string;                    // Firebase Auth UID
+  id: string;                     // 사용자 ID
+  name: string;                   // 사용자명
   email: string;                  // 이메일
-  displayName: string;            // 표시 이름
-  photoURL?: string;              // 프로필 사진 URL
+  phone?: string | null;          // 전화번호
   role: 'user' | 'admin';         // 사용자 역할
-  createdAt: Timestamp;           // 생성 일시
-  updatedAt: Timestamp;           // 수정 일시
+  isActive?: boolean;             // 활성화 여부
+  photoURL?: string;              // 프로필 사진 URL
 }
 ```
 
@@ -75,38 +91,84 @@ interface User {
 interface Facility {
   id: string;                     // 시설 ID
   name: string;                   // 시설명
-  description: string;            // 시설 설명
-  capacity: number;               // 수용 인원
-  location: string;               // 위치
-  images: string[];               // 이미지 URL 배열
-  isActive: boolean;              // 활성화 여부
-  operatingHours: {
-    [day: string]: {              // 요일 (0: 일요일 ~ 6: 토요일)
-      open: string;               // 개장 시간 (HH:MM)
-      close: string;              // 종료 시간 (HH:MM)
-      isOpen: boolean;            // 영업 여부
-    };
-  };
+  bufferMinutes?: number;         // 예약 간 버퍼 시간(분)
 }
 ```
 
-#### 3.1.3 예약 (reservations)
+#### 3.1.3 예약/대관 (bookings)
 ```typescript
-interface Reservation {
+interface Booking {
   id: string;                     // 예약 ID
-  userId: string;                 // 예약자 UID
+  userId?: string;                // 예약자 ID
+  userName?: string;              // 예약자명 (비정규화)
+  userEmail?: string;             // 예약자 이메일 (비정규화)
   facilityId: string;             // 시설 ID
-  facilityName: string;           // 시설명 (denormalized)
-  userName: string;               // 예약자명 (denormalized)
-  userEmail: string;              // 예약자 이메일 (denormalized)
-  startTime: Timestamp;           // 시작 시간
-  endTime: Timestamp;             // 종료 시간
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  startDate: string;              // 시작 날짜 (YYYY-MM-DD)
+  endDate: string;                // 종료 날짜 (YYYY-MM-DD)
+  startTime: string;              // 시작 시간 (HH:MM)
+  endTime: string;                // 종료 시간 (HH:MM)
   purpose: string;                // 사용 목적
-  participants: number;           // 참여 인원
-  createdAt: Timestamp;           // 생성 일시
-  updatedAt: Timestamp;           // 수정 일시
+  organization?: string;          // 소속 단체
+  category: 'class' | 'event' | 'club' | 'personal'; // 대관 분류
+  numberOfParticipants?: number;  // 참여 인원
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed'; // 상태
+  rejectionReason?: string;       // 거절 사유
+  adminNotes?: string;            // 관리자 메모
+  recurrenceRule?: {              // 반복 규칙
+    days: number[];               // 반복 요일 (0: 일요일 ~ 6: 토요일)
+  };
+  createdAt?: any;                // 생성 일시
+  updatedAt?: any;                // 수정 일시
 }
+```
+
+#### 3.1.4 프로그램 (programs)
+```typescript
+interface Program {
+  id: string;                     // 프로그램 ID
+  title: string;                  // 프로그램명
+  description: string;            // 설명
+  instructor?: string;            // 강사명
+  capacity: number;               // 정원
+  enrolled?: number;              // 현재 등록자 수
+  scheduleDays: number[];         // 수업 요일 (0: 일요일 ~ 6: 토요일)
+  startTime: string;              // 시작 시간 (HH:MM)
+  endTime: string;                // 종료 시간 (HH:MM)
+  startDate: string;              // 프로그램 시작 날짜 (YYYY-MM-DD)
+  endDate: string;                // 프로그램 종료 날짜 (YYYY-MM-DD)
+  level: 'beginner' | 'intermediate' | 'advanced'; // 난이도
+  category: 'yoga' | 'pilates' | 'fitness' | 'dance' | 'badminton' | 'pickleball'; // 카테고리
+  fee?: number;                   // 수강료
+}
+```
+
+#### 3.1.5 프로그램 신청 (applications)
+```typescript
+interface ProgramApplication {
+  id: string;                     // 신청 ID
+  programId: string;              // 프로그램 ID
+  userId: string;                 // 신청자 ID
+  status: 'pending' | 'approved' | 'rejected'; // 신청 상태
+  appliedAt?: any;                // 신청 일시
+  programTitle?: string;          // 프로그램명 (비정규화)
+  userName?: string;              // 신청자명 (비정규화)
+  userEmail?: string;             // 신청자 이메일 (비정규화)
+  rejectionReason?: string;       // 거절 사유
+  updatedAt?: any;                // 수정 일시
+}
+```
+
+#### 3.1.6 컬렉션 상수
+```typescript
+export const COLLECTIONS = {
+  USERS: 'users',
+  BOOKINGS: 'bookings',
+  PROGRAMS: 'programs',
+  APPLICATIONS: 'applications',
+  FACILITIES: 'facilities',
+  NOTIFICATIONS: 'notifications',
+  SYSTEM_CONFIG: 'system_config',
+} as const
 ```
 
 ---
@@ -223,7 +285,71 @@ interface Reservation {
 - 크로스 브라우저 테스트
 - 성능 테스트
 
-### 8.4 부하 테스트 (k6)
-- 동시 사용자 테스트
-- API 성능 테스트
-- 부하 상황에서의 안정성 테스트
+### 8.4 성능 테스트
+- **로딩 성능**
+  - Firebase Performance Monitoring
+  - Core Web Vitals 측정
+  - Lighthouse 점수 모니터링
+
+- **데이터베이스 성능**
+  - Firestore 쿼리 성능 모니터링
+  - 동시 사용자 처리 능력 테스트
+  - 대용량 데이터 처리 테스트
+
+### 8.5 테스트 자동화 도구
+```bash
+# 현재 사용 중인 커맨드
+npm run dev          # 개발 서버 실행
+npm run build        # 생산 빌드
+npm run lint         # ESLint 코드 검사
+npm run preview      # 빌드 결과 미리보기
+```
+
+---
+
+## 9. 향후 개발 계획
+
+### 9.1 단기 계획 (1-3개월)
+- 실시간 알림 시스템 구현
+- 고급 통계 대시보드 개발
+- 모바일 반응형 개선
+- 성능 최적화 및 모니터링 강화
+
+### 9.2 중기 계획 (3-6개월)
+- PWA (Progressive Web App) 지원
+- 오프라인 기능 구현
+- 다국어 지원 (i18n)
+- 결제 시스템 연동
+
+### 9.3 장기 계획 (6개월 이상)
+- 네이티브 모바일 앱 개발
+- AI 기반 추천 시스템
+- 고급 분석 및 리포트
+- 외부 시스템 연동 API
+
+---
+
+## 10. 개발 가이드라인
+
+### 10.1 코딩 컨벤션
+- **TypeScript 사용 필수**
+- **함수형 컴포넌트와 Hooks 사용**
+- **Tailwind CSS 유틸리티 클래스 활용**
+- **ESLint 규칙 준수**
+
+### 10.2 파일 구조
+```
+src/
+├── components/     # 재사용 가능한 UI 컴포넌트
+├── hooks/         # 커스텀 React Hooks
+├── types.ts       # TypeScript 타입 정의
+├── utils.ts       # 유틸리티 함수
+├── firebase.ts    # Firebase 설정
+└── App.tsx        # 메인 애플리케이션
+```
+
+### 10.3 Git 워크플로우
+- **기능별 브랜치 생성**
+- **Pull Request 기반 코드 리뷰**
+- **커밋 메시지 컨벤션 준수**
+- **자동 배포 파이프라인 활용**

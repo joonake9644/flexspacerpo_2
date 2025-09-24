@@ -1,348 +1,241 @@
-# Firebase 웹앱 개발 가이드
+# FlexSpace Pro - 체육관 통합 관리 시스템
 
 <div align="center">
-  <img src="https://picsum.photos/1200/400?random=2" alt="Firebase 웹앱 개발 배너" />
+  <img src="https://picsum.photos/1200/400?random=2" alt="FlexSpace Pro 배너" />
 </div>
 
-## 프로젝트 개요
+## 📋 프로젝트 개요
 
-이 저장소는 Firebase를 백엔드로 사용하는 Next.js 웹 애플리케이션 개발을 위한 종합 가이드입니다. 모든 Firebase 기반 프로젝트에서 재사용 가능한 개발 패턴, 베스트 프랙티스, 그리고 AI 코딩 어시스턴트 활용법을 제공합니다.
+FlexSpace Pro는 체육관 시설 대관, 프로그램 관리, 회원 관리를 통합한 웹 기반 관리 시스템입니다. Firebase를 백엔드로 사용하며, React + TypeScript로 개발된 현대적인 SPA(Single Page Application)입니다.
 
-### 제공하는 내용
-- Firebase 서비스 통합 패턴
-- TypeScript + React 개발 가이드라인
-- 보안 규칙 및 성능 최적화
-- AI 어시스턴트 활용 워크플로우
-- 테스트 및 배포 전략
+### 🚀 주요 기능
 
-## 기술 스택
+#### 👥 사용자 관리
+- 일반 사용자 및 관리자 계정 시스템
+- Google 로그인 지원
+- 이메일 인증 시스템
+- 프로필 이미지 업로드
+
+#### 📅 체육관 대관 시스템
+- **대관 신청**: 목적, 기간, 시간, 인원 설정
+- **캘린더 뷰**: 월별 캘린더로 대관 현황 확인
+- **상태 관리**: 대기중, 승인됨, 거절됨, 완료됨, 취소됨
+- **반복 예약**: 요일별 반복 대관 지원
+
+#### 🏃‍♂️ 프로그램 관리
+- **프로그램 카테고리**: 요가, 필라테스, 피트니스, 댄스, 배드민턴, 피클볼
+- **상세 검색**: 종목, 요일, 시간대, 레벨별 필터링
+- **프로그램 카드**: 강사, 일정, 비용, 정원 정보 표시
+- **D-Day 카운터**: 프로그램 시작까지 남은 일수 표시
+
+#### 🔧 관리자 기능
+- **통계 대시보드**: 실시간 운영 현황 모니터링
+- **신청 관리**: 대관 및 프로그램 신청 승인/거절
+- **직접 등록**: 관리자의 수강생/팀 직접 등록
+- **전체 캘린더**: 모든 일정 통합 관리
+
+## 🛠 기술 스택
 
 ### Frontend
-- **Framework**: Next.js 15 + TypeScript
-- **UI Library**: shadcn/ui + TailwindCSS
-- **State Management**: Zustand + @tanstack/react-query
-- **Icons**: Lucide React
+- **React 18**: 함수형 컴포넌트 + Hooks
+- **TypeScript**: 타입 안전성 보장
+- **Vite**: 빠른 빌드 도구
+- **Tailwind CSS**: 유틸리티 퍼스트 CSS 프레임워크
+- **Lucide React**: 아이콘 라이브러리
 
-### Backend (Firebase)
-- **Authentication**: Firebase Auth
-- **Database**: Cloud Firestore
-- **Functions**: Firebase Functions (Node.js)
-- **Hosting**: Firebase Hosting
-- **Storage**: Firebase Storage
-- **Messaging**: Firebase Cloud Messaging
+### Backend & Database
+- **Firebase Authentication**: 사용자 인증
+- **Cloud Firestore**: NoSQL 데이터베이스
+- **Firebase Functions**: 서버리스 백엔드
+- **Firebase Storage**: 파일 저장소
 
-### Development Tools
-- **AI Assistants**: Cursor AI / Windsurf / GitHub Copilot
-- **Package Manager**: npm
-- **Code Quality**: ESLint + Prettier
-- **Testing**: Jest + Firebase Emulator Suite
+### 개발 도구
+- **ESLint**: 코드 품질 관리
+- **Prettier**: 코드 포맷팅
+- **TypeScript**: 정적 타입 검사
 
-## 프로젝트 구조
+## 📁 프로젝트 구조
 
 ```
-├── src/
-│   ├── app/                    # Next.js App Router
-│   ├── components/
-│   │   ├── ui/                 # shadcn/ui 컴포넌트
-│   │   └── common/             # 공통 컴포넌트
-│   ├── features/               # 기능별 모듈
-│   │   └── [feature-name]/     # 기능별 디렉토리
-│   │       ├── components/
-│   │       ├── hooks/
-│   │       ├── types/
-│   │       └── api.ts
-│   ├── lib/
-│   │   ├── firebase/           # Firebase 설정
-│   │   └── utils.ts            # 유틸리티 함수
-│   ├── hooks/                  # 전역 커스텀 훅
-│   └── types/                  # 전역 TypeScript 타입
-├── functions/                  # Firebase Functions
-├── firestore.rules            # Firestore 보안 규칙
-├── storage.rules              # Storage 보안 규칙
-└── firebase.json              # Firebase 설정
+flexspace-pro/
+├── components/           # React 컴포넌트
+│   ├── AdminSection.tsx     # 관리자 운영 관리
+│   ├── BookingSection.tsx   # 체육관 대관
+│   ├── ProgramSection.tsx   # 프로그램 관리
+│   ├── Dashboard.tsx        # 대시보드
+│   ├── Navigation.tsx       # 네비게이션
+│   ├── LoginForm.tsx        # 로그인 폼
+│   ├── UserManagement.tsx   # 회원 관리
+│   └── DashboardCalendar.tsx # 캘린더 컴포넌트
+├── hooks/               # 커스텀 React Hooks
+│   ├── use-auth.ts         # 인증 훅
+│   ├── use-firestore.ts    # Firestore 데이터 훅
+│   └── use-notification.ts # 알림 훅
+├── functions/           # Firebase Functions
+├── types.ts            # TypeScript 타입 정의
+├── utils.ts            # 유틸리티 함수
+└── firebase.ts         # Firebase 설정
 ```
 
-## 시작하기
+## 🚀 설치 및 실행
 
-### Prerequisites
-- Node.js 18.0 이상
-- npm
-- Firebase CLI
-- AI 코딩 어시스턴트 (Cursor AI, Windsurf, GitHub Copilot 등)
-
-### 1. 저장소 설정
-```bash
-# 새 프로젝트 생성 또는 기존 프로젝트 클론
-git clone [your-repository-url]
-cd [your-project-name]
-```
-
-### 2. 의존성 설치
+### 1. 의존성 설치
 ```bash
 npm install
 ```
 
-### 3. Firebase 프로젝트 설정
-```bash
-# Firebase CLI 설치 (글로벌)
-npm install -g firebase-tools
-
-# Firebase 로그인
-firebase login
-
-# Firebase 프로젝트 초기화
-firebase init
+### 2. 환경 변수 설정
+`.env` 파일을 생성하고 Firebase 설정을 추가:
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
-### 4. 환경변수 설정
-`.env.local` 파일을 생성하고 Firebase 설정을 추가하세요:
-
+### 3. 테스트용 관리자 계정 생성
+초기 관리자 계정을 생성하려면 다음 스크립트를 실행:
 ```bash
-# Firebase 클라이언트 설정 (NEXT_PUBLIC_ 필수)
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-
-# Firebase Admin SDK (서버 전용)
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nyour_private_key\n-----END PRIVATE KEY-----\n"
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
-
-# 환경 설정
-NEXT_PUBLIC_ENVIRONMENT=development
+node scripts/create-admin.js
 ```
 
-### 5. Firebase Emulator Suite 시작
-```bash
-# 개발용 에뮬레이터 실행
-firebase emulators:start --only auth,firestore,functions,storage
-```
+**🔑 테스트용 관리자 계정 정보:**
+- **이메일**: `admin@flexspace.test`
+- **비밀번호**: `FlexAdmin2025!`
+- **역할**: 관리자 (admin)
 
-### 6. 개발 서버 실행
+> ⚠️ **보안 주의사항**: 운영 환경에서는 반드시 강력한 비밀번호로 변경하고, 테스트 계정은 삭제하세요.
+
+### 4. 개발 서버 실행
 ```bash
-# 새 터미널에서 실행
 npm run dev
 ```
 
-애플리케이션이 http://localhost:3000 에서 실행됩니다.
-
-## 개발 가이드
-
-### AI 코딩 어시스턴트 활용
-이 프로젝트는 다양한 AI 코딩 어시스턴트와 함께 개발하도록 설계되었습니다.
-
-#### 공통 설정
-1. 프로젝트 루트의 개발 가이드라인 파일들:
-   - `.cursorrules` (Cursor AI용)
-   - `windsurf.config.json` (Windsurf용)
-   - 기타 AI 어시스턴트별 설정 파일
-2. Firebase 특화 개발 패턴이 미리 정의되어 있습니다
-3. TypeScript + React + Firebase 베스트 프랙티스가 적용됩니다
-
-#### 권장 개발 워크플로우 (AI 어시스턴트 공통)
-1. **기능 계획** → AI와 함께 요구사항 정리
-2. **컴포넌트 설계** → AI 어시스턴트로 구조 설계
-3. **코드 구현** → AI 어시스턴트의 코드 제안 활용
-4. **테스트 작성** → Firebase Emulator로 테스트
-5. **리팩토링** → AI 어시스턴트로 코드 개선
-
-#### AI 어시스턴트별 활용법
-- **Cursor AI**: `.cursorrules` 파일 기반 컨텍스트 이해
-- **Windsurf**: 프로젝트 구조와 Firebase 패턴 학습
-- **GitHub Copilot**: 인라인 코드 제안 및 자동완성
-- **기타**: 프로젝트 문서와 코딩 스타일 참조
-
-### Firebase 개발 패턴
-
-#### 기본 Firebase 설정
-```typescript
-// lib/firebase/config.ts
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-
-const firebaseConfig = {
-  // Firebase 설정
-};
-
-export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-```
-
-#### Firestore 데이터 작업
-```typescript
-// 데이터 읽기
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
-
-export async function getData(collectionName: string, filters?: any) {
-  const q = query(collection(db, collectionName), ...filters);
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-}
-
-// 실시간 데이터 구독
-import { onSnapshot } from 'firebase/firestore';
-
-useEffect(() => {
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    setData(data);
-  });
-
-  return unsubscribe;
-}, []);
-```
-
-#### 보안 규칙 예제
-```javascript
-// firestore.rules
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{collection}/{document} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == resource.data.userId;
-    }
-    
-    function isAdmin() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-  }
-}
-```
-
-## 테스트
-
-### Firebase Emulator Suite 사용
+### 5. 빌드
 ```bash
-# 테스트 실행 (에뮬레이터 자동 시작)
-npm run test
-
-# 보안 규칙 테스트
-npm run test:rules
+npm run build
 ```
 
-### 테스트 종류
-- **Unit Tests**: 비즈니스 로직 테스트
-- **Integration Tests**: Firebase 서비스 연동 테스트
-- **Security Rules Tests**: Firestore 보안 규칙 검증
+## 📱 주요 화면
 
-## 배포
+### 1. 관리자 대시보드
+- 실시간 통계 (대기중인 대관, 프로그램 신청, 운영중인 프로그램, 총 이용자)
+- 최근 대관 신청 목록
+- 프로그램 신청 현황
 
-### 스테이징 환경
-```bash
-# Firebase 스테이징 배포
-firebase use staging
-firebase deploy
-```
+### 2. 운영 관리 (Operations)
+- 수강생/팀 직접 등록 폼
+- 대기중인 신청 승인/거절 관리
+- 프로그램 관리 (CRUD)
+- 전체 대관 캘린더
 
-### 프로덕션 환경
-```bash
-# Firebase 프로덕션 배포
-firebase use production
-firebase deploy --only hosting,firestore,functions
-```
+### 3. 체육관 대관 (Booking)
+- 목록 뷰 / 캘린더 뷰 전환
+- 신규 대관 신청 폼
+- 진행중인 대관 / 완료된 대관 구분
 
-## 모니터링
+### 4. 프로그램 (Program)
+- 검색 및 필터링 기능
+- 프로그램 카드 그리드 레이아웃
+- 상세 정보 표시 (강사, 일정, 비용, 정원)
 
-### Firebase Console 확인 사항
-- **Authentication**: 사용자 인증 현황
-- **Firestore**: 데이터베이스 사용량 및 성능
-- **Functions**: 클라우드 함수 실행 로그
-- **Hosting**: 웹앱 배포 상태
-- **Performance**: 앱 성능 메트릭
+## 🔐 보안 기능
 
-## 문제 해결
+- Firebase Authentication을 통한 안전한 사용자 인증
+- 역할 기반 접근 제어 (RBAC)
+- 이메일 인증 필수
+- 관리자 전용 기능 보호
 
-### 일반적인 이슈들
-1. **Firebase 초기화 오류**
-   ```bash
-   firebase use --add
-   ```
+## 📊 데이터 모델
 
-2. **환경변수 누락**
-   - `.env.local` 파일의 모든 필수 변수 확인
-   - `NEXT_PUBLIC_` 접두사 확인
+### User (사용자)
+- 기본 정보 (이름, 이메일, 전화번호)
+- 역할 (user/admin)
+- 프로필 이미지
 
-3. **보안 규칙 오류**
-   ```bash
-   firebase firestore:rules:test --test-file=firestore-test.js
-   ```
+### Booking (대관)
+- 시설, 기간, 시간 정보
+- 목적, 분류, 참가자 수
+- 상태 관리 (pending/approved/rejected/completed/cancelled)
 
-4. **Emulator 연결 실패**
-   ```bash
-   firebase emulators:start --only auth,firestore --reset-cache
-   ```
+### Program (프로그램)
+- 기본 정보 (제목, 설명, 강사)
+- 일정 (요일, 시간, 기간)
+- 정원 및 등록자 수
+- 카테고리 및 레벨
 
-## 기여하기
+### ProgramApplication (프로그램 신청)
+- 사용자-프로그램 매핑
+- 신청 상태 관리
+- 신청일시 추적
 
-1. 이슈 생성 또는 기존 이슈 확인
-2. 피처 브랜치 생성 (`git checkout -b feature/새기능`)
-3. 변경사항 커밋 (`git commit -m 'feat: 새로운 기능 추가'`)
-4. 브랜치 푸시 (`git push origin feature/새기능`)
-5. Pull Request 생성
+## 🎨 디자인 시스템
 
-### 커밋 메시지 규칙
-- `feat:` 새로운 기능
-- `fix:` 버그 수정
-- `docs:` 문서 변경
-- `style:` 코드 포맷팅
-- `refactor:` 리팩토링
-- `test:` 테스트 추가
-- `firebase:` Firebase 설정 변경
+### 색상 팔레트
+- **Primary**: Blue (#3B82F6)
+- **Secondary**: Purple (#8B5CF6)
+- **Success**: Green (#10B981)
+- **Warning**: Orange (#F59E0B)
+- **Error**: Red (#EF4444)
 
-## 라이선스
+### 타이포그래피
+- **제목**: text-3xl font-bold
+- **부제목**: text-xl font-semibold
+- **본문**: text-sm text-gray-600
+- **라벨**: text-sm font-medium
 
-이 프로젝트는 MIT 라이선스 하에 있습니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+### 컴포넌트
+- **카드**: rounded-2xl shadow-sm border
+- **버튼**: rounded-xl px-4 py-2
+- **입력필드**: rounded-xl border-gray-200
+- **배지**: rounded-full px-3 py-1
 
-## 지원
+## 🔄 상태 관리
 
-- **버그 신고**: [GitHub Issues](../../issues)
-- **기능 요청**: [GitHub Discussions](../../discussions)
-- **문서**: [Wiki](../../wiki)
+- React Hooks (useState, useEffect, useMemo, useCallback)
+- 커스텀 훅을 통한 로직 분리
+- Context API 미사용 (props drilling 방식)
 
-## Vite 기준 참고
+## 📱 반응형 디자인
 
-- 프런트엔드는 Vite + React + TypeScript(SPA) 기준으로 동작합니다.
-- 환경변수는 `VITE_` 접두사를 사용합니다(`.env.local`).
-- 개발 서버: `npm run dev` 실행 시 기본 포트는 `5173`입니다.
+- Mobile First 접근법
+- Tailwind CSS 브레이크포인트 활용
+- 그리드 시스템 (grid-cols-1 md:grid-cols-2 lg:grid-cols-3)
 
-예시(.env.local):
+## 🚀 성능 최적화
 
-```
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-VITE_FIREBASE_MEASUREMENT_ID=
+- React.lazy()를 통한 코드 스플리팅
+- React.memo()를 통한 컴포넌트 메모이제이션
+- useCallback()을 통한 함수 메모이제이션
+- 이미지 최적화 및 지연 로딩
 
-# (선택) 에뮬레이터/푸시 설정
-VITE_USE_EMULATOR=false
-VITE_EMULATOR_HOST=127.0.0.1
-VITE_EMULATOR_AUTH_PORT=9099
-VITE_EMULATOR_FIRESTORE_PORT=8080
-VITE_VAPID_PUBLIC_KEY=
-```
+## 🧪 테스트
 
-개발 서버 실행:
+- TypeScript 타입 검사
+- ESLint 코드 품질 검사
+- 빌드 테스트를 통한 구문 오류 검증
 
-```
-npm run dev   # http://localhost:5173
-```
+## 📈 향후 개발 계획
 
----
+- [ ] 실시간 알림 시스템
+- [ ] 모바일 앱 개발
+- [ ] 결제 시스템 연동
+- [ ] 고급 통계 및 리포트
+- [ ] 다국어 지원
+- [ ] PWA 지원
 
-<div align="center">
-  Made with Firebase & Next.js
-</div>
+## 👥 기여자
+
+- 개발: Claude AI Assistant
+- 기획: 사용자 요구사항 기반
+
+## 📄 라이센스
+
+이 프로젝트는 MIT 라이센스 하에 배포됩니다.
+
+## 📞 지원
+
+문제가 발생하거나 개선 사항이 있으면 이슈를 등록해 주세요.

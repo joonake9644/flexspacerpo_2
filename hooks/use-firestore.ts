@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Booking, Program, ProgramApplication, User } from '@/types'
+import type { Booking, Program, ProgramApplication, User, Facility } from '@/types'
 import { db } from '@/firebase'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 
@@ -11,6 +11,7 @@ export const useFirestore = () => {
   const [programs, setPrograms] = useState<Program[]>([])
   const [applications, setApplications] = useState<ProgramApplication[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [facilities, setFacilities] = useState<Facility[]>([])
 
   useEffect(() => {
     const unsubs: Array<() => void> = []
@@ -55,6 +56,16 @@ export const useFirestore = () => {
       })
     )
 
+    // facilities
+    unsubs.push(
+      onSnapshot(collection(db, 'facilities'), (snap) => {
+        const list: Facility[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+        setFacilities(list)
+      }, (error) => {
+        console.error("Error fetching facilities:", error)
+      })
+    )
+
     setLoading(false)
     return () => unsubs.forEach((u) => u())
   }, [])
@@ -70,7 +81,8 @@ export const useFirestore = () => {
       setApplications,
       users,
       setUsers,
+      facilities,
     }),
-    [loading, bookings, programs, applications, users]
+    [loading, bookings, programs, applications, users, facilities]
   )
 }

@@ -1,0 +1,167 @@
+const AdminSection: React.FC<AdminSectionProps> = ({ bookings, setBookings, applications, setApplications, programs, setPrograms }) => {
+  const [showAdminBookingForm, setShowAdminBookingForm] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [rejectionModal, setRejectionModal] = useState({ isOpen: false, type: null as 'booking' | 'application' | null, id: null as string | null, reason: '' });
+  const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
+  const [programToEdit, setProgramToEdit] = useState<Program | null>(null);
+  const [deleteProgramModal, setDeleteProgramModal] = useState({ isOpen: false, program: null as Program | null, confirmText: '' });
+  
+  // States for booking list filtering
+  const [bookingFilterStatus, setBookingFilterStatus] = useState<'all' | Booking['status']>('all');
+  const [bookingFilterSearch, setBookingFilterSearch] = useState('');
+  const [bookingFilterStartDate, setBookingFilterStartDate] = useState('');
+  const [bookingFilterEndDate, setBookingFilterEndDate] = useState('');
+
+  const initialAdminBookingState = { startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '10:00', purpose: '', organization: '', days: [] as number[], category: 'class' as Booking['category'] };
+  const [newAdminBooking, setNewAdminBooking] = useState(initialAdminBookingState);
+  
+  const initialProgramFormState = { title: '', description: '', instructor: '', capacity: 10, scheduleDays: [] as number[], startTime: '09:00', endTime: '10:00', startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], level: 'beginner' as Program['level'], category: 'yoga' as Program['category'], fee: 0 };
+  const [programForm, setProgramForm] = useState(initialProgramFormState);
+  
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+  
+  const timeOptions = useMemo(() => {
+    const options = [];
+    for (let h = 0; h < 24; h++) {
+        for (let m = 0; m < 60; m += 10) {
+            const hour = String(h).padStart(2, '0');
+            const minute = String(m).padStart(2, '0');
+            options.push(`${hour}:${minute}`);
+        }
+    }
+    return options;
+  }, []);
+
+  useEffect(() => {
+    if (programToEdit) {
+      setProgramForm({ ...programToEdit, fee: programToEdit.fee || 0 });
+    } else {
+      setProgramForm(initialProgramFormState);
+    }
+  }, [programToEdit]);
+
+  const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings]);
+  const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications]);
+
+  const filteredBookings = useMemo(() => {
+    return bookings
+      .filter(b => bookingFilterStatus === 'all' || b.status === bookingFilterStatus)
+      .filter(b => b.purpose.toLowerCase().includes(bookingFilterSearch.toLowerCase()) || b.userName.toLowerCase().includes(bookingFilterSearch.toLowerCase()))
+      .filter(b => {
+        if (!bookingFilterStartDate || !bookingFilterEndDate) return true;
+        const bookingStart = new Date(b.startDate);
+        const bookingEnd = new Date(b.endDate);
+        const filterStart = new Date(bookingFilterStartDate);
+        const filterEnd = new Date(bookingFilterEndDate);
+        return bookingStart <= filterEnd && bookingEnd >= filterStart;
+      })
+      .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  }, [bookings, bookingFilterStatus, bookingFilterSearch, bookingFilterStartDate, bookingFilterEndDate]);
+
+  const handleBookingAction = (bookingId: string, action: 'approve' | 'reject') => {
+    if (action === 'approve') setBookings(bs => bs.map(b => b.id === bookingId ? { ...b, status: 'approved', rejectionReason: undefined } : b));
+    else setRejectionModal({ isOpen: true, id: bookingId, type: 'booking', reason: '' });
+  };
+  const handleApplicationAction = (appId: string, action: 'approve' | 'reject') => {
+    if (action === 'approve') setApplications(as => as.map(a => a.id === appId ? { ...a, status: 'approved', rejectionReason: undefined } : a));
+    else setRejectionModal({ isOpen: true, id: appId, type: 'application', reason: '' });
+  };
+  
+  const handleConfirmRejection = () => {
+    if (!rejectionModal.id || !rejectionModal.type) return;
+    if (rejectionModal.type === 'booking') setBookings(bs => bs.map(b => b.id === rejectionModal.id ? { ...b, status: 'rejected', rejectionReason: rejectionModal.reason } : b));
+    else setApplications(as => as.map(a => a.id === rejectionModal.id ? { ...a, status: 'rejected', rejectionReason: rejectionModal.reason } : a));
+    setRejectionModal({ isOpen: false, type: null, id: null, reason: '' });
+  };
+  
+  const handleEditBookingClick = (booking: Booking) => {
+    setEditingBookingId(booking.id);
+    setNewAdminBooking({ startDate: booking.startDate, endDate: booking.endDate, startTime: booking.startTime, endTime: booking.endTime, purpose: booking.purpose, organization: booking.organization || '', days: booking.recurrenceRule?.days || [], category: booking.category });
+    setShowAdminBookingForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  const handleAdminBookingSubmit = () => {
+    const { startDate, endDate, startTime, endTime, purpose, days, category, organization } = newAdminBooking;
+    if (!startDate || !endDate || !startTime || !endTime || !purpose || !category) return alert('모든 필수 필드를 입력해주세요.');
+    if (new Date(endDate) < new Date(startDate)) return alert('종료일은 시작일보다 빠를 수 없습니다.');
+    const newBookingData = { startDate, endDate, startTime, endTime, purpose, organization, category, ...(days.length > 0 && { recurrenceRule: { days } }) };
+    const newBookingOccurrences = expandBooking(newBookingData);
+    const allExistingOccurrences = bookings.filter(b => b.status === 'approved' && b.id !== editingBookingId).flatMap(b => expandBooking(b));
+    for (const newOcc of newBookingOccurrences) {
+      for (const existingOcc of allExistingOccurrences) {
+        if (newOcc.date === existingOcc.date && new Date(`${newOcc.date}T${newOcc.startTime}`) < new Date(`${existingOcc.date}T${existingOcc.endTime}`) && new Date(`${existingOcc.date}T${existingOcc.startTime}`) < new Date(`${newOcc.date}T${newOcc.endTime}`)) {
+          alert(`시간 충돌: ${newOcc.date} ${newOcc.startTime}-${newOcc.endTime}에 이미 '${existingOcc.purpose}' 예약이 있습니다.`);
+          return;
+        }
+      }
+    }
+    if (editingBookingId) {
+      setBookings(bs => bs.map(b => b.id === editingBookingId ? { ...b, ...newBookingData } : b));
+      alert('대관 정보가 성공적으로 수정되었습니다.');
+    } else {
+      const finalNewBooking: Booking = { id: `admin-${Date.now()}`, userId: 'admin', userName: '관리자 등록', status: 'approved', ...newBookingData };
+      setBookings(prev => [finalNewBooking, ...prev].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
+      alert('행사가 성공적으로 등록되었습니다.');
+    }
+    setEditingBookingId(null);
+    setNewAdminBooking(initialAdminBookingState);
+    setShowAdminBookingForm(false);
+  };
+
+  const handleSaveProgram = () => {
+    if (!programForm.title || !programForm.instructor || programForm.scheduleDays.length === 0 || !programForm.startTime || !programForm.endTime) return alert('모든 필수 필드를 입력해주세요.');
+    if (programToEdit && programForm.capacity < programToEdit.enrolled) return alert(`정원은 현재 등록된 인원(${programToEdit.enrolled}명)보다 적을 수 없습니다.`);
+    if (programToEdit) {
+      setPrograms(ps => ps.map(p => p.id === programToEdit.id ? { ...p, ...programForm } : p));
+      alert('프로그램이 수정되었습니다.');
+    } else {
+      const newProgram: Program = { id: `prog-${Date.now()}`, enrolled: 0, ...programForm };
+      setPrograms(prev => [newProgram, ...prev]);
+      alert('새 프로그램이 개설되었습니다.');
+    }
+    setIsProgramModalOpen(false);
+    setProgramToEdit(null);
+  };
+  
+  const handleConfirmProgramDeletion = () => {
+    if (deleteProgramModal.program && deleteProgramModal.confirmText === deleteProgramModal.program.title) {
+      setPrograms(prev => prev.filter(p => p.id !== deleteProgramModal.program!.id));
+      setDeleteProgramModal({ isOpen: false, program: null, confirmText: '' });
+    } else {
+      alert("프로그램명이 일치하지 않습니다.");
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="mb-8"><h1 className="text-3xl font-bold text-gray-900 mb-2">운영 관리</h1><p className="text-gray-600">대관 및 프로그램 신청을 관리하고, 행사를 직접 등록하세요</p></div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6"><div className="flex items-center space-x-3 mb-4"><div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-orange-600"/></div><h3 className="text-lg font-semibold text-gray-900">대기중인 대관 신청 ({pendingBookings.length})</h3></div><div className="space-y-3 max-h-96 overflow-y-auto pr-2">{pendingBookings.length > 0 ? pendingBookings.map(b => (<div key={b.id} className="p-4 bg-gray-50 rounded-xl transition-shadow hover:shadow-md"><div><p className="font-semibold text-gray-900">{b.purpose}</p><p className="text-sm text-gray-600 mt-1"><span className="font-medium text-gray-700">{b.userName}</span>{b.organization && <><span className="mx-2 text-gray-300">|</span><span>{b.organization}</span></>}<span className="mx-2 text-gray-300">|</span><span>{b.startDate} @ {b.startTime}-{b.endTime}</span></p></div><div className="flex space-x-3 mt-4"><button onClick={() => handleBookingAction(b.id, 'approve')} className="flex-1 flex items-center justify-center space-x-1.5 bg-green-100 text-green-700 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium border border-green-200"><Check className="w-4 h-4"/><span>승인</span></button><button onClick={() => handleBookingAction(b.id, 'reject')} className="flex-1 flex items-center justify-center space-x-1.5 bg-red-100 text-red-700 px-3 py-2 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium border border-red-200"><X className="w-4 h-4"/><span>거부</span></button></div></div>)) : <p className="text-gray-500 text-center py-4">대기중인 신청이 없습니다.</p>}</div></div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6"><div className="flex items-center space-x-3 mb-4"><div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center"><UserCheck className="w-5 h-5 text-purple-600"/></div><h3 className="text-lg font-semibold text-gray-900">대기중인 프로그램 신청 ({pendingApplications.length})</h3></div><div className="space-y-3 max-h-96 overflow-y-auto pr-2">{pendingApplications.length > 0 ? pendingApplications.map(a => (<div key={a.id} className="p-4 bg-gray-50 rounded-xl transition-shadow hover:shadow-md"><div><p className="font-semibold text-gray-900">{a.programTitle}</p><p className="text-sm text-gray-600 mt-1"><span className="font-medium text-gray-700">{a.userName}</span><span className="mx-2 text-gray-300">|</span><span>신청일: {a.appliedAt}</span></p></div><div className="flex space-x-3 mt-4"><button onClick={() => handleApplicationAction(a.id, 'approve')} className="flex-1 flex items-center justify-center space-x-1.5 bg-green-100 text-green-700 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium border border-green-200"><Check className="w-4 h-4"/><span>승인</span></button><button onClick={() => handleApplicationAction(a.id, 'reject')} className="flex-1 flex items-center justify-center space-x-1.5 bg-red-100 text-red-700 px-3 py-2 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium border border-red-200"><X className="w-4 h-4"/><span>거부</span></button></div></div>)) : <p className="text-gray-500 text-center py-4">대기중인 신청이 없습니다.</p>}</div></div>
+      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6"><div className="flex items-center justify-between"><div className="flex items-center space-x-3"><div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center"><PlusCircle className="w-5 h-5 text-blue-600"/></div><h3 className="text-lg font-semibold text-gray-900">{editingBookingId ? '대관 수정' : '수업/행사 직접 등록'}</h3></div><button onClick={() => { setShowAdminBookingForm(!showAdminBookingForm); if (editingBookingId) setEditingBookingId(null); }} className="text-sm font-medium text-blue-600 hover:text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">{showAdminBookingForm ? '접기' : '양식 열기'}</button></div>{showAdminBookingForm && (<div className="mt-6 border-t border-gray-200 pt-6"><div className="space-y-4"><div><label htmlFor="admin-booking-purpose" className="block text-sm font-medium text-gray-700 mb-2">수업/행사명</label><input id="admin-booking-purpose" type="text" value={newAdminBooking.purpose} onChange={e => setNewAdminBooking({...newAdminBooking, purpose: e.target.value})} placeholder="예: 농구부 정기 연습" className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">주관 기관 (선택)</label><input type="text" value={newAdminBooking.organization} onChange={e => setNewAdminBooking({...newAdminBooking, organization: e.target.value})} placeholder="예: 총학생회" className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div><div><label className="block text-sm font-medium text-gray-700 mb-2">종류</label><select value={newAdminBooking.category} onChange={e => setNewAdminBooking({...newAdminBooking, category: e.target.value as Booking['category']})} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"><option value="class">수업</option><option value="event">행사</option><option value="club">동아리</option><option value="personal">개인</option></select></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">시작일</label><input type="date" value={newAdminBooking.startDate} onChange={e => setNewAdminBooking({...newAdminBooking, startDate: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div><div><label className="block text-sm font-medium text-gray-700 mb-2">종료일</label><input type="date" value={newAdminBooking.endDate} onChange={e => setNewAdminBooking({...newAdminBooking, endDate: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div></div><div><label className="block text-sm font-medium text-gray-700 mb-2">반복 요일 (선택)</label><div className={`grid grid-cols-7 gap-2 ${newAdminBooking.startDate === newAdminBooking.endDate ? 'opacity-50' : ''}`}>{weekDays.map((day, index) => (<button type="button" key={index} disabled={newAdminBooking.startDate === newAdminBooking.endDate} onClick={() => setNewAdminBooking(prev => ({...prev, days: prev.days.includes(index) ? prev.days.filter(d => d !== index) : [...prev.days, index]}))} className={`p-2 rounded-lg border text-sm font-medium transition-all duration-200 ${newAdminBooking.days.includes(index) ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-gray-100 hover:border-gray-400'}`}>{day}</button>))}</div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">시작 시간</label><select value={newAdminBooking.startTime} onChange={e => setNewAdminBooking({...newAdminBooking, startTime: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500">{timeOptions.map(time => <option key={time} value={time}>{time}</option>)}</select></div><div><label className="block text-sm font-medium text-gray-700 mb-2">종료 시간</label><select value={newAdminBooking.endTime} onChange={e => setNewAdminBooking({...newAdminBooking, endTime: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500">{timeOptions.map(time => <option key={time} value={time}>{time}</option>)}</select></div></div><div className="flex justify-end space-x-3 pt-4"><button onClick={() => {setShowAdminBookingForm(false); setEditingBookingId(null);}} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors">취소</button><button onClick={handleAdminBookingSubmit} className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 font-medium transition-colors">{editingBookingId ? '수정하기' : '등록하기'}</button></div></div>)} 
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6"><div className="flex items-center justify-between mb-4"><div className="flex items-center space-x-3"><div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center"><BookOpen className="w-5 h-5 text-purple-600"/></div><h3 className="text-lg font-semibold text-gray-900">프로그램 관리</h3></div><button onClick={() => { setProgramToEdit(null); setIsProgramModalOpen(true); }} className="flex items-center space-x-2 text-sm font-medium text-purple-600 hover:text-purple-800 px-4 py-2 rounded-lg hover:bg-purple-50 transition-colors"><PlusCircle className="w-4 h-4"/><span>새 프로그램 개설</span></button></div><div className="space-y-3">{programs.map(p => { const status = getProgramStatus(p); return (<div key={p.id} className="p-4 bg-gray-50 rounded-xl flex items-center justify-between transition-shadow hover:shadow-md"><div className="flex-1"><div className="flex items-center space-x-3"><p className="font-semibold text-gray-900">{p.title}</p>{status.dDay !== null && (<span className="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">D-{status.dDay}</span>)}</div><p className="text-sm text-gray-600 mt-1">{p.instructor} | {p.startDate} ~ {p.endDate} | {p.scheduleDays.sort().map(d => weekDays[d]).join(',')} | {p.fee ? `${p.fee.toLocaleString()}원` : '무료'} | {p.enrolled}/{p.capacity}</p></div><div className="flex space-x-2"><button onClick={() => {setProgramToEdit(p); setIsProgramModalOpen(true);}} className="p-2 text-gray-500 hover:text-blue-600 rounded-lg transition-all hover:scale-110"><Edit className="w-4 h-4"/></button><button onClick={() => setDeleteProgramModal({ isOpen: true, program: p, confirmText: '' })} className="p-2 text-gray-500 hover:text-red-600 rounded-lg transition-all hover:scale-110"><Trash2 className="w-4 h-4"/></button></div></div>)})}</div></div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div className="flex items-center space-x-3 mb-4"><div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-gray-600"/></div><h3 className="text-lg font-semibold text-gray-900">전체 대관 목록 관리</h3></div>
+        <div className="p-4 bg-gray-50 rounded-xl mb-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div><label className="text-sm font-medium text-gray-700 block mb-2">상태</label><select value={bookingFilterStatus} onChange={e => setBookingFilterStatus(e.target.value as any)} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"><option value="all">전체</option><option value="pending">대기중</option><option value="approved">승인됨</option><option value="rejected">거부됨</option><option value="completed">종료</option></select></div>
+            <div className="md:col-span-2"><label className="text-sm font-medium text-gray-700 block mb-2">신청자 또는 목적으로 검색</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"/><input type="search" placeholder="김대학, 농구 연습..." value={bookingFilterSearch} onChange={e => setBookingFilterSearch(e.target.value)} className="w-full p-3 pl-10 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div><label className="text-sm font-medium text-gray-700 block mb-2">기간 (시작일)</label><input type="date" value={bookingFilterStartDate} onChange={e => setBookingFilterStartDate(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div>
+            <div><label className="text-sm font-medium text-gray-700 block mb-2">기간 (종료일)</label><input type="date" value={bookingFilterEndDate} onChange={e => setBookingFilterEndDate(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-blue-400 focus:ring-2 focus:ring-blue-500"/></div>
+          </div>
+        </div>
+        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">{filteredBookings.map(b => (<div key={b.id} className="p-4 bg-gray-50 rounded-xl flex items-center justify-between transition-shadow hover:shadow-md"><div className="flex-1"><p className="font-semibold text-gray-900">{b.purpose}</p><p className="text-sm text-gray-600 mt-1">{b.userName} | {b.startDate} {b.startTime}-{b.endTime} | <span className={`font-medium px-2 py-1 rounded-full text-xs ${b.status === 'approved' ? 'bg-green-100 text-green-800' : b.status === 'pending' ? 'bg-orange-100 text-orange-800' : b.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{b.status}</span></p></div><div className="flex space-x-2"><button onClick={() => handleEditBookingClick(b)} className="p-2 text-gray-500 hover:text-blue-600 rounded-lg transition-all hover:scale-110"><Edit className="w-4 h-4"/></button><button onClick={() => {if(window.confirm('정말로 이 대관을 삭제하시겠습니까?')) setBookings(bs => bs.filter(bk => bk.id !== b.id))}} className="p-2 text-gray-500 hover:text-red-600 rounded-lg transition-all hover:scale-110"><Trash2 className="w-4 h-4"/></button></div></div>))}</div>
+      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6"><div className="flex items-center space-x-3 mb-4"><div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-green-600"/></div><h3 className="text-lg font-semibold text-gray-900">전체 대관 캘린더</h3></div><BookingCalendar bookings={bookings} /></div>
+      {rejectionModal.isOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4"><h3 className="text-xl font-bold text-gray-900 mb-4">거부 사유 입력</h3><p className="text-gray-600 mb-6">거부 이유를 작성해주세요. 신청자에게 표시됩니다.</p><div><textarea value={rejectionModal.reason} onChange={(e) => setRejectionModal(prev => ({ ...prev, reason: e.target.value }))} className="w-full p-3 border border-gray-200 rounded-xl h-28 transition-colors hover:border-red-400 focus:ring-2 focus:ring-red-500" rows={4}/></div><div className="flex space-x-3 mt-6"><button type="button" onClick={() => setRejectionModal({ isOpen: false, type: null, id: null, reason: '' })} className="flex-1 py-3 px-4 border rounded-xl hover:bg-gray-50 transition-colors">취소</button><button onClick={handleConfirmRejection} disabled={!rejectionModal.reason.trim()} className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:bg-gray-300 transition-colors">거부 확정</button></div></div></div>)}
+      {isProgramModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold text-gray-900 mb-6">{programToEdit ? '프로그램 수정' : '새 프로그램 개설'}</h3><div className="space-y-4"> <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">프로그램명</label><input type="text" value={programForm.title} onChange={e => setProgramForm({...programForm, title: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div><div><label className="block text-sm font-medium text-gray-700 mb-2">강사명</label><input type="text" value={programForm.instructor} onChange={e => setProgramForm({...programForm, instructor: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div></div><div><label className="block text-sm font-medium text-gray-700 mb-2">설명</label><textarea value={programForm.description} onChange={e => setProgramForm({...programForm, description: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl h-24 transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">시작일</label><input type="date" value={programForm.startDate} onChange={e => setProgramForm({...programForm, startDate: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div><div><label className="block text-sm font-medium text-gray-700 mb-2">종료일</label><input type="date" value={programForm.endDate} onChange={e => setProgramForm({...programForm, endDate: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div></div><div><label className="block text-sm font-medium text-gray-700 mb-2">반복 요일</label><div className="grid grid-cols-7 gap-2">{weekDays.map((day, index) => (<button type="button" key={index} onClick={() => setProgramForm(prev => ({...prev, scheduleDays: prev.scheduleDays.includes(index) ? prev.scheduleDays.filter(d => d !== index) : [...prev.scheduleDays, index]}))} className={`p-2 rounded-lg border text-sm font-medium transition-all duration-200 ${programForm.scheduleDays.includes(index) ? 'bg-purple-500 text-white border-purple-500' : 'bg-white hover:bg-gray-100 hover:border-gray-400'}`}>{day}</button>))}</div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">정원</label><input type="number" value={programForm.capacity} onChange={e => setProgramForm({...programForm, capacity: parseInt(e.target.value)})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div><div><label className="block text-sm font-medium text-gray-700 mb-2">참가비</label><input type="number" value={programForm.fee} onChange={e => setProgramForm({...programForm, fee: parseInt(e.target.value)})} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"/></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">레벨</label><select value={programForm.level} onChange={e => setProgramForm({...programForm, level: e.target.value as Program['level']})} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"><option value="beginner">초급</option><option value="intermediate">중급</option><option value="advanced">고급</option></select></div><div><label className="block text-sm font-medium text-gray-700 mb-2">종목</label><select value={programForm.category} onChange={e => setProgramForm({...programForm, category: e.target.value as Program['category']})} className="w-full p-3 border border-gray-200 rounded-xl bg-white transition-colors hover:border-purple-400 focus:ring-2 focus:ring-purple-500"><option value="yoga">요가</option><option value="pilates">필라테스</option><option value="fitness">피트니스</option><option value="dance">댄스</option><option value="badminton">배드민턴</option><option value="pickleball">피클볼</option></select></div></div></div><div className="flex space-x-3 mt-6"><button type="button" onClick={() => setIsProgramModalOpen(false)} className="flex-1 py-3 px-4 border rounded-xl hover:bg-gray-50 transition-colors">취소</button><button onClick={handleSaveProgram} className="flex-1 py-3 px-4 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors">{programToEdit ? '수정하기' : '개설하기'}</button></div></div></div>)}
+      {deleteProgramModal.isOpen && deleteProgramModal.program && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4"><h3 className="text-xl font-bold text-gray-900 mb-2">프로그램 삭제 확인</h3><p className="text-gray-600 mb-4">삭제를 진행하려면 프로그램명(<strong className="text-red-600">{deleteProgramModal.program.title}</strong>)을(를) 정확히 입력하세요.</p><div><input type="text" value={deleteProgramModal.confirmText} onChange={(e) => setDeleteProgramModal(prev => ({ ...prev, confirmText: e.target.value }))} className="w-full p-3 border border-gray-200 rounded-xl transition-colors hover:border-red-400 focus:ring-2 focus:ring-red-500" autoComplete="off"/></div><div className="flex space-x-3 mt-6"><button type="button" onClick={() => setDeleteProgramModal({ isOpen: false, program: null, confirmText: '' })} className="flex-1 py-3 px-4 border rounded-xl hover:bg-gray-50 transition-colors">취소</button><button onClick={handleConfirmProgramDeletion} disabled={deleteProgramModal.confirmText !== deleteProgramModal.program.title} className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:bg-gray-300 transition-colors">삭제</button></div></div></div>)}
+    </div>
+  );
+};
+
+export default AdminSection;

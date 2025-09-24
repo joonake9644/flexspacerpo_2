@@ -8,12 +8,17 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "firebase:emulators": "firebase emulators:start --only auth,firestore,functions,storage",
-    "deploy": "vite build && firebase deploy --only hosting"
+    "deploy": "vite build && firebase deploy --only hosting",
+    "create-admin": "node scripts/create-admin.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug"
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",
     "@material/web": "^2.4.0",
     "clsx": "^2.1.1",
+    "dotenv": "^16.6.1",
     "firebase": "^10.14.0",
     "lucide-react": "^0.542.0",
     "react": "^19.1.1",
@@ -23,12 +28,17 @@
     "typescript": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "@types/node": "^22.18.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
     "@vitejs/plugin-react": "^5.0.2",
     "autoprefixer": "^10.0.0",
     "eslint": "^8.0.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
     "postcss": "^8.0.0",
     "vite": "^7.1.4"
   }

@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getAuth, connectAuthEmulator } from 'firebase/auth'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { getStorage, connectStorageEmulator } from 'firebase/storage'
 import { getAnalytics, isSupported as analyticsSupported } from 'firebase/analytics'
 
 const firebaseConfig = {
@@ -18,6 +19,7 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
 
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+export const storage = getStorage(app)
 
 // Emulator wiring (local only)
 const useEmu = (import.meta as any).env?.VITE_USE_EMULATOR === 'true'
@@ -25,11 +27,15 @@ if (useEmu) {
   const host = ((import.meta as any).env?.VITE_EMULATOR_HOST as string) || '127.0.0.1'
   const authPort = Number(((import.meta as any).env?.VITE_EMULATOR_AUTH_PORT as string) || 9099)
   const firestorePort = Number(((import.meta as any).env?.VITE_EMULATOR_FIRESTORE_PORT as string) || 8080)
+  const storagePort = Number(((import.meta as any).env?.VITE_EMULATOR_STORAGE_PORT as string) || 9199)
   try {
     connectAuthEmulator(auth, `http://${host}:${authPort}`, { disableWarnings: true })
   } catch {}
   try {
     connectFirestoreEmulator(db, host, firestorePort)
+  } catch {}
+  try {
+    connectStorageEmulator(storage, host, storagePort)
   } catch {}
 }
 

@@ -1,4 +1,5 @@
 import React, { useMemo, useState, lazy, Suspense } from 'react'
+// 개발 가이드라인: 사용자별 데이터 필터링과 Firebase Timestamp 안전 처리 적용
 import { User, Booking, ProgramApplication, Program, ActiveTab } from '../types'
 import { Calendar as CalendarIcon, Users, BookOpen, UserCheck } from 'lucide-react'
 const DashboardCalendar = lazy(() => import('./DashboardCalendar'))
@@ -21,12 +22,13 @@ const getProgramStatus = (program: Program) => {
   return { text: '모집중', dDay: diff }
 }
 
-const StatusBadge: React.FC<{ status: 'approved' | 'pending' | 'rejected' | 'completed' }> = ({ status }) => {
+const StatusBadge: React.FC<{ status: 'approved' | 'pending' | 'rejected' | 'completed' | 'cancelled' }> = ({ status }) => {
   const statusMap = {
     approved: { text: '승인됨 / Approved', color: 'bg-green-100 text-green-800' },
     pending: { text: '대기중 / Pending', color: 'bg-orange-100 text-orange-800' },
     rejected: { text: '거절됨 / Rejected', color: 'bg-red-100 text-red-800' },
     completed: { text: '종료 / Ended', color: 'bg-gray-100 text-gray-800' },
+    cancelled: { text: '취소됨 / Cancelled', color: 'bg-gray-100 text-gray-800' },
   } as const
   const { text, color } = statusMap[status]
   return <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>{text}</span>
@@ -49,9 +51,13 @@ const formatProgramSchedule = (program: Program) => {
   return `${days} ${program.startTime}-${program.endTime}`
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings, applications, programs, setActiveTab }) => {
+const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], applications = [], programs = [], setActiveTab }) => {
   const myBookings = useMemo(() => bookings.filter(b => b.userId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()), [bookings, currentUser.id])
-  const myApplications = useMemo(() => applications.filter(a => a.userId === currentUser.id).sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()), [applications, currentUser.id])
+  const myApplications = useMemo(() => applications.filter(a => a.userId === currentUser.id).sort((a, b) => {
+    const aDate = a.appliedAt?.toDate ? a.appliedAt.toDate() : new Date(a.appliedAt || 0)
+    const bDate = b.appliedAt?.toDate ? b.appliedAt.toDate() : new Date(b.appliedAt || 0)
+    return bDate.getTime() - aDate.getTime()
+  }), [applications, currentUser.id])
   const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings])
   const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications])
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month')
@@ -67,29 +73,56 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings, applicatio
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {currentUser.role === 'admin' ? (
           <>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600 mb-1">대기중인 대관 / Pending Bookings</p>
-                <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center"><CalendarIcon className="w-6 h-6 text-orange-600" /></div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">대기중인 대관 / Pending Bookings</p>
+                  <p className="text-3xl font-bold text-orange-600">{pendingBookings.length}</p>
+                </div>
+                <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+                  <CalendarIcon className="w-6 h-6 text-orange-600" />
+                </div>
               </div>
-              <p className="text-3xl font-bold text-orange-600">{pendingBookings.length}</p>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600 mb-1">대기중인 프로그램 신청 / Pending Applications</p>
-                <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center"><UserCheck className="w-6 h-6 text-purple-600" /></div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">대기중인 프로그램 신청 / Pending Applications</p>
+                  <p className="text-3xl font-bold text-purple-600">{pendingApplications.length}</p>
+                </div>
+                <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
+                  <UserCheck className="w-6 h-6 text-purple-600" />
+                </div>
               </div>
-              <p className="text-3xl font-bold text-purple-600">{pendingApplications.length}</p>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600 mb-1">운영중인 프로그램 / Active Programs</p>
-                <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center"><BookOpen className="w-6 h-6 text-green-600" /></div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">운영중인 프로그램 / Active Programs</p>
+                  <p className="text-3xl font-bold text-green-600">{programs.filter(p => {
+                    const today = new Date()
+                    const end = new Date(p.endDate)
+                    return end >= today
+                  }).length}</p>
+                </div>
+                <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
+                  <BookOpen className="w-6 h-6 text-green-600" />
+                </div>
               </div>
-              <p className="text-3xl font-bold text-green-600">{programs.length}</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">총 이용자 수 / Total Users</p>
+                  <p className="text-3xl font-bold text-blue-600">128</p>
+                </div>
+                <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                  <Users className="w-6 h-6 text-blue-600" />
+                </div>
+              </div>
             </div>
           </>
         ) : (
@@ -112,65 +145,103 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings, applicatio
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">최근 대관 / Recent Bookings</h3>
-          <div className="space-y-3">
-            {(currentUser.role === 'admin' ? bookings.slice(0, 5) : myBookings.slice(0, 5)).map(booking => (
-              <div key={booking.id} className="p-3 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">최근 대관 신청 / Recent Bookings</h3>
+          <div className="space-y-4">
+            {(currentUser.role === 'admin' ? bookings.slice(0, 3) : myBookings.slice(0, 3)).map(booking => (
+              <div key={booking.id} className="p-4 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100 border-l-4 border-blue-500">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">{booking.purpose}</p>
-                    <p className="text-sm text-gray-600">{booking.organization ? `${booking.organization} | ` : ''}{formatBookingDate(booking)} {booking.startTime}-{booking.endTime}</p>
-                    {currentUser.role === 'admin' && <p className="text-sm text-gray-500">신청자 / Applicant: {booking.userName}</p>}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="font-semibold text-gray-900">{booking.purpose}</h4>
+                      <StatusBadge status={booking.status} />
+                    </div>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p className="flex items-center gap-2">
+                        <CalendarIcon className="w-4 h-4" />
+                        {booking.organization && `${booking.organization} | `}
+                        {formatBookingDate(booking)} {booking.startTime}-{booking.endTime}
+                      </p>
+                      {currentUser.role === 'admin' && (
+                        <p className="flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          신청자: {booking.userName} ({booking.userEmail})
+                        </p>
+                      )}
+                      <p className="flex items-center gap-2 text-gray-500">
+                        <BookOpen className="w-4 h-4" />
+                        {booking.category === 'class' ? '수업' : booking.category === 'event' ? '행사' : booking.category === 'personal' ? '개인' : '동아리'} | {booking.numberOfParticipants}명
+                      </p>
+                    </div>
                   </div>
-                  <StatusBadge status={booking.status} />
                 </div>
               </div>
             ))}
-            {currentUser.role !== 'admin' && myBookings.length === 0 && (
-              <p className="text-center text-gray-500 py-6">대관 신청 내역이 없습니다. / No booking history.</p>
+            {((currentUser.role === 'admin' ? bookings : myBookings).length === 0) && (
+              <p className="text-center text-gray-500 py-8">대관 신청 내역이 없습니다.</p>
             )}
           </div>
+          {(currentUser.role === 'admin' ? bookings : myBookings).length > 3 && (
+            <button onClick={() => setActiveTab('booking')} className="w-full mt-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
+              전체 보기
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-gray-900">{currentUser.role === 'admin' ? '프로그램 신청 현황 / Program Applications' : '내 프로그램 / My Programs'}</h3>
-            {currentUser.role === 'user' && myApplications.length > 5 && (
-              <button onClick={() => setActiveTab('program')} className="text-sm font-medium text-purple-600 hover:underline">전체 보기 / View All</button>
-            )}
-          </div>
-          <div className="space-y-3">
-            {(currentUser.role === 'admin' ? applications.slice(0, 5) : myApplications.slice(0, 5)).map(app => {
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {currentUser.role === 'admin' ? '프로그램 신청 현황 / Program Applications' : '내 프로그램 / My Programs'}
+          </h3>
+          <div className="space-y-4">
+            {(currentUser.role === 'admin' ? applications.slice(0, 3) : myApplications.slice(0, 3)).map(app => {
               const program = programs.find(p => p.id === app.programId)
               const programStatus = program ? getProgramStatus(program) : null
               return (
-                <div key={app.id} className="p-3 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100">
+                <div key={app.id} className="p-4 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100 border-l-4 border-purple-500">
                   <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center space-x-3 mb-1">
-                        <p className="font-medium text-gray-900">{app.programTitle}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h4 className="font-semibold text-gray-900">{app.programTitle}</h4>
                         {programStatus && programStatus.dDay !== null && (
                           <span className="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">D-{programStatus.dDay}</span>
                         )}
+                        <StatusBadge status={app.status} />
                       </div>
                       {program && (
-                        <div className="text-sm text-gray-600 mt-1 space-y-1">
-                          <p>강사 / Instructor: {program.instructor} | 기간 / Period: {program.startDate} ~ {program.endDate}</p>
-                          <p>일정 / Schedule: {formatProgramSchedule(program)} | 비용 / Fee: {program.fee ? `${program.fee.toLocaleString()}원` : '무료 / Free'}</p>
-                          <p>정원 / Capacity: {program.enrolled ?? 0} / {program.capacity}</p>
+                        <div className="text-sm text-gray-600 space-y-1">
+                          <p className="flex items-center gap-2">
+                            <Users className="w-4 h-4" />
+                            강사: {program.instructor} | 기간: {program.startDate} ~ {program.endDate}
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <CalendarIcon className="w-4 h-4" />
+                            일정: {formatProgramSchedule(program)}
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <BookOpen className="w-4 h-4" />
+                            비용: {program.fee ? `${program.fee.toLocaleString()}원` : '무료'} | 정원: {program.enrolled ?? 0} / {program.capacity}명
+                          </p>
                         </div>
                       )}
-                      {currentUser.role === 'admin' && <p className="text-sm text-gray-500 mt-1">신청자 / Applicant: {app.userName} | 신청일 / Applied At: {app.appliedAt}</p>}
+                      {currentUser.role === 'admin' && (
+                        <p className="text-sm text-gray-500 mt-2 flex items-center gap-2">
+                          <UserCheck className="w-4 h-4" />
+                          신청자: {app.userName} | 신청일: {(app.appliedAt?.toDate ? app.appliedAt.toDate() : new Date(app.appliedAt || 0)).toLocaleDateString()}
+                        </p>
+                      )}
                     </div>
-                    <StatusBadge status={app.status} />
                   </div>
                 </div>
               )
             })}
-            {currentUser.role !== 'admin' && myApplications.length === 0 && (
-              <p className="text-center text-gray-500 py-6">프로그램 신청 내역이 없습니다. / No program application history.</p>
+            {((currentUser.role === 'admin' ? applications : myApplications).length === 0) && (
+              <p className="text-center text-gray-500 py-8">프로그램 신청 내역이 없습니다.</p>
             )}
           </div>
+          {(currentUser.role === 'admin' ? applications : myApplications).length > 3 && (
+            <button onClick={() => setActiveTab('program')} className="w-full mt-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-800 transition-colors">
+              전체 보기
+            </button>
+          )}
         </div>
       </div>
 
