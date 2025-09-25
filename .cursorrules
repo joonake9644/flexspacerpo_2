@@ -1,0 +1,83 @@
+# Cursor AI Rules for FlexSpace Pro
+
+## CRITICAL DATA CONSISTENCY RULES
+When working with admin actions in this React+Firebase project:
+
+### MANDATORY PATTERN FOR ALL ADMIN ACTIONS
+1. **Optimistic local state update** (immediate UX)
+2. **User notification feedback**
+3. **Firebase persistence** (updateDoc + serverTimestamp) - NEVER SKIP
+4. **Error handling** without breaking UX
+
+### FORBIDDEN PATTERNS
+- setState without Firebase persistence (data will disappear)
+- Local state updates without await updateDoc()
+- Missing serverTimestamp() on updates
+- Admin actions without user feedback
+
+### COMPONENT DATA SHARING
+- AdminSection ↔ Dashboard ↔ BookingSection share same data arrays
+- All status changes must persist to Firebase or real-time listeners will overwrite
+- Check CLAUDE.md for detailed guidelines
+- Reference data-consistency-rules.ts for templates
+
+### ADMIN CREATED USERS
+- Set adminCreated: true flag in UserManagement.tsx
+- Bypass email verification in use-auth.ts for adminCreated users
+- Page refresh needed after admin creates user
+
+### REQUIRED IMPORTS FOR ADMIN ACTIONS
+```typescript
+const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+const { db } = await import('@/firebase')
+```
+
+### TEMPLATE FOR ADMIN ACTIONS
+```typescript
+const handleAdminAction = async (id: string, newStatus: string) => {
+  // 1. Optimistic update
+  setLocalState(prev => prev.map(item =>
+    item.id === id ? {...item, status: newStatus} : item
+  ))
+
+  // 2. User feedback
+  showNotification(`Action completed: ${newStatus}`, 'success')
+
+  // 3. Firebase persistence (CRITICAL)
+  try {
+    await updateDoc(doc(db, 'collection', id), {
+      status: newStatus,
+      updatedAt: serverTimestamp()
+    })
+  } catch (error) {
+    console.warn('Firebase persistence failed:', error)
+  }
+}
+```
+
+### VALIDATION CHECKLIST
+Before implementing any admin action, ensure:
+- ✅ Optimistic local state update
+- ✅ User notification
+- ✅ Firebase persistence with updateDoc
+- ✅ serverTimestamp() included
+- ✅ Error handling
+
+### FILES TO CHECK
+- CLAUDE.md: Complete architecture guidelines
+- data-consistency-rules.ts: Structured rules and templates
+- types.ts: Type definitions with cross-component usage notes
+
+### EMERGENCY KEYWORDS
+If you see these terms, immediately apply data consistency rules:
+- admin approval, status change, booking approval, application approval
+- setState, setBookings, setApplications
+- data disappearing, UI freezing
+
+### TESTING REQUIREMENTS
+After any admin action implementation:
+1. Test in AdminSection (admin view)
+2. Verify Dashboard shows correct counts
+3. Check BookingSection reflects changes (user view)
+4. Browser refresh to confirm Firebase persistence
+5. Multiple tabs for real-time sync verification

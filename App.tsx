@@ -17,6 +17,7 @@ export default function Home() {
   const { user: currentUser, login, logout, signup, adminLogin, googleLogin, loading: authLoading } = useAuth()
   const {
     loading,
+    syncing,
     bookings,
     setBookings,
     programs,
@@ -109,6 +110,7 @@ export default function Home() {
             applications={applications}
             programs={programs}
             setActiveTab={setActiveTab}
+            syncing={syncing}
           />
         )
       case 'booking':
@@ -117,6 +119,7 @@ export default function Home() {
             currentUser={currentUser}
             bookings={bookings}
             setBookings={setBookings}
+            syncing={syncing}
           />
         )
       case 'program':
@@ -155,6 +158,7 @@ export default function Home() {
             applications={applications}
             programs={programs}
             setActiveTab={setActiveTab}
+            syncing={syncing}
           />
         )
     }

@@ -10,6 +10,7 @@
     "firebase:emulators": "firebase emulators:start --only auth,firestore,functions,storage",
     "deploy": "vite build && firebase deploy --only hosting",
     "create-admin": "node scripts/create-admin.js",
+    "check:rules": "echo 'Data consistency rules: See CLAUDE.md and data-consistency-rules.ts' && cat CLAUDE.md | grep -A 5 'CRITICAL Data Consistency Rules' || echo 'Check data-consistency-rules.ts for AI guidelines'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"

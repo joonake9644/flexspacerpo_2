@@ -1,0 +1,474 @@
+// #데이터 일관성 가이드라인
+// ============================================================================
+// PRACTICAL DATA CONSISTENCY GUIDELINES
+// ============================================================================
+// Simple, actionable rules that prevent common data issues without over-engineering.
+// Focus: Solve real problems with minimal complexity.
+//
+// PHILOSOPHY: "Simple things should be simple, complex things should be possible"
+// ============================================================================
+
+/**
+ * @fileoverview Lightweight data consistency patterns for practical development.
+ * No heavy abstractions, just proven patterns that prevent data loss and UI issues.
+ */
+
+// ============================================================================
+// CORE PATTERNS: Apply based on risk level
+// ============================================================================
+
+/**
+ * Risk Assessment: Choose your approach
+ */
+export enum DataRisk {
+  /** Money, security, legal data - Full protection needed */
+  HIGH = 'HIGH',
+  
+  /** User data, settings - Basic protection needed */
+  MEDIUM = 'MEDIUM',
+  
+  /** UI state, filters - Simple handling okay */
+  LOW = 'LOW'
+}
+
+/**
+ * Pattern Selection Guide
+ */
+export const PATTERN_GUIDE = {
+  HIGH_RISK: 'Use SAFE pattern (4 steps)',
+  MEDIUM_RISK: 'Use BASIC pattern (2 steps)', 
+  LOW_RISK: 'Use SIMPLE pattern (1 step)'
+} as const
+
+// ============================================================================
+// PATTERN 1: SAFE (High Risk Data)
+// ============================================================================
+
+/**
+ * SAFE Pattern: For critical data operations
+ * Use when: Money, user accounts, permissions, orders
+ */
+export const SAFE_PATTERN = {
+  STEP_1: 'Update UI immediately (optimistic)',
+  STEP_2: 'Show loading/pending state',
+  STEP_3: 'Save to database with error handling',
+  STEP_4: 'Rollback UI if save fails'
+}
+
+/**
+ * SAFE Pattern Template - Copy and modify
+ */
+export const safeUpdate = async (data: any, updateUI: Function, saveData: Function) => {
+  const originalState = getCurrentState()
+  
+  try {
+    // Step 1: Optimistic update
+    updateUI(data)
+    
+    // Step 2: Show loading
+    setLoading(true)
+    
+    // Step 3: Save to database
+    await saveData(data)
+    
+    // Success feedback
+    showSuccess('Saved successfully')
+    
+  } catch (error) {
+    // Step 4: Rollback on failure
+    updateUI(originalState)
+    showError('Save failed, please try again')
+    console.error('Save operation failed:', error)
+  } finally {
+    setLoading(false)
+  }
+}
+
+/**
+ * Real Example: Approve Application
+ */
+export const approveApplication = async (appId: string) => {
+  const originalApp = getApplication(appId)
+  
+  try {
+    // 1. Update UI immediately
+    setApplicationStatus(appId, 'approved')
+    
+    // 2. Show feedback
+    setLoading(true)
+    
+    // 3. Save to database (both app and dashboard stats)
+    await Promise.all([
+      updateDoc('applications', appId, { 
+        status: 'approved',
+        approvedAt: serverTimestamp() 
+      }),
+      updateDoc('dashboard', 'stats', {
+        pendingCount: increment(-1),
+        approvedCount: increment(1)
+      })
+    ])
+    
+    showToast('Application approved!', 'success')
+    
+  } catch (error) {
+    // 4. Rollback UI
+    setApplicationStatus(appId, originalApp.status)
+    showToast('Approval failed', 'error')
+  } finally {
+    setLoading(false)
+  }
+}
+
+// ============================================================================
+// PATTERN 2: BASIC (Medium Risk Data)  
+// ============================================================================
+
+/**
+ * BASIC Pattern: For important but not critical data
+ * Use when: User preferences, profile updates, settings
+ */
+export const BASIC_PATTERN = {
+  STEP_1: 'Update UI immediately',
+  STEP_2: 'Save to database with basic error handling'
+}
+
+/**
+ * BASIC Pattern Template
+ */
+export const basicUpdate = async (data: any, updateUI: Function, saveData: Function) => {
+  try {
+    // Step 1: Update UI
+    updateUI(data)
+    
+    // Step 2: Save to database  
+    await saveData(data)
+    
+  } catch (error) {
+    // Simple rollback
+    updateUI(getPreviousState())
+    console.error('Update failed:', error)
+  }
+}
+
+/**
+ * Real Example: Update User Profile
+ */
+export const updateProfile = async (profileData: any) => {
+  const oldProfile = getCurrentProfile()
+  
+  try {
+    setProfile(profileData)  // Immediate UI update
+    await saveProfile(profileData)  // Database save
+  } catch (error) {
+    setProfile(oldProfile)  // Simple rollback
+    showError('Profile update failed')
+  }
+}
+
+// ============================================================================
+// PATTERN 3: SIMPLE (Low Risk Data)
+// ============================================================================
+
+/**
+ * SIMPLE Pattern: For UI state and temporary data
+ * Use when: Filters, themes, temporary selections
+ */
+export const SIMPLE_PATTERN = {
+  STEP_1: 'Just update the state'
+}
+
+/**
+ * Real Examples: Simple operations
+ */
+export const updateFilter = (newFilter: string) => {
+  setFilter(newFilter)  // That's it!
+}
+
+export const changeTheme = (theme: string) => {
+  setTheme(theme)
+  localStorage.setItem('theme', theme)  // Optional persistence
+}
+
+// ============================================================================
+// COMMON MISTAKES TO AVOID
+// ============================================================================
+
+/**
+ * ❌ DANGER ZONES - These patterns cause problems
+ */
+export const AVOID_THESE = {
+  // For user data
+  DANGEROUS_USER_DATA: `
+    // ❌ DON'T DO THIS
+    setState(newUserData)  // Only updates UI, data lost on refresh
+  `,
+  
+  // For financial operations  
+  DANGEROUS_FINANCIAL: `
+    // ❌ DON'T DO THIS
+    async updateBalance(amount) {
+      setBalance(balance + amount)  // No error handling, no rollback
+      await api.updateBalance(amount)  // What if this fails?
+    }
+  `,
+  
+  // Missing error feedback
+  SILENT_FAILURES: `
+    // ❌ DON'T DO THIS  
+    try {
+      await saveData()
+    } catch (error) {
+      // Silent fail - user never knows it failed
+    }
+  `
+} as const
+
+/**
+ * ✅ QUICK FIXES for common mistakes
+ */
+export const QUICK_FIXES = {
+  ADD_ERROR_HANDLING: `
+    // ✅ Always handle errors
+    try {
+      await saveData()
+      showSuccess('Saved!')
+    } catch (error) {
+      showError('Save failed')
+      console.error(error)
+    }
+  `,
+  
+  ADD_ROLLBACK: `
+    // ✅ Keep backup for rollback
+    const backup = getCurrentState()
+    try {
+      setState(newState)
+      await saveState(newState)
+    } catch (error) {
+      setState(backup)  // Rollback
+    }
+  `,
+  
+  USER_FEEDBACK: `
+    // ✅ Always tell user what happened
+    setLoading(true)
+    try {
+      await operation()
+      showSuccess('Done!')
+    } catch (error) {
+      showError('Failed!')
+    } finally {
+      setLoading(false)
+    }
+  `
+} as const
+
+// ============================================================================
+// TECHNOLOGY-SPECIFIC HELPERS
+// ============================================================================
+
+/**
+ * React + Firebase Helpers
+ */
+export const firebaseHelpers = {
+  // Helper for batch updates (prevents partial updates)
+  batchUpdate: async (updates: Array<{collection: string, id: string, data: any}>) => {
+    const batch = writeBatch(db)
+    updates.forEach(update => {
+      const docRef = doc(db, update.collection, update.id)
+      batch.update(docRef, update.data)
+    })
+    await batch.commit()
+  },
+  
+  // Helper for optimistic updates with Firebase
+  optimisticUpdate: async (
+    localUpdate: () => void,
+    firebaseUpdate: () => Promise<void>,
+    rollback: () => void
+  ) => {
+    try {
+      localUpdate()  // Immediate UI update
+      await firebaseUpdate()  // Database update
+    } catch (error) {
+      rollback()  // Revert UI on failure
+      throw error
+    }
+  }
+}
+
+/**
+ * React Hooks for Common Patterns  
+ */
+export const useDataOperation = () => {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const execute = async (operation: () => Promise<void>) => {
+    setLoading(true)
+    setError(null)
+    try {
+      await operation()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Operation failed')
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  return { loading, error, execute }
+}
+
+// ============================================================================
+// DECISION HELPERS
+// ============================================================================
+
+/**
+ * Quick Decision Guide - 30 second evaluation
+ */
+export const QUICK_DECISIONS = {
+  ASK_YOURSELF: [
+    'Will users be upset if this data disappears? → Use SAFE pattern',
+    'Is this about money or security? → Use SAFE pattern',
+    'Is this user settings or preferences? → Use BASIC pattern', 
+    'Is this just UI state (theme, filters)? → Use SIMPLE pattern'
+  ],
+  
+  WHEN_IN_DOUBT: 'Start with BASIC pattern, upgrade to SAFE if needed'
+} as const
+
+/**
+ * Real-world examples by risk level
+ */
+export const EXAMPLES_BY_RISK = {
+  HIGH_RISK: [
+    'Payment processing',
+    'User registration/login', 
+    'Order placement',
+    'Permission changes',
+    'Account deletion'
+  ],
+  
+  MEDIUM_RISK: [
+    'Profile updates',
+    'Settings changes',
+    'Content creation',
+    'Application submissions'  
+  ],
+  
+  LOW_RISK: [
+    'UI theme changes',
+    'Search filters',
+    'Sorting preferences',
+    'Temporary form state'
+  ]
+} as const
+
+// ============================================================================
+// SIMPLE VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Basic validation - only what you really need
+ */
+export const validateBasics = (data: any) => {
+  if (!data) throw new Error('Data is required')
+  if (typeof data !== 'object') throw new Error('Data must be an object')
+  return true
+}
+
+export const validateUser = (userData: any) => {
+  if (!userData.email) throw new Error('Email is required')
+  if (!userData.email.includes('@')) throw new Error('Valid email required')
+  return true
+}
+
+// ============================================================================
+// MONITORING - KEEP IT SIMPLE
+// ============================================================================
+
+/**
+ * Simple error tracking
+ */
+export const trackError = (operation: string, error: any) => {
+  // Send to your error tracking service
+  console.error(`[${operation}] Error:`, error)
+  
+  // Optional: Send to analytics
+  // analytics.track('operation_failed', { operation, error: error.message })
+}
+
+/**
+ * Simple success tracking
+ */
+export const trackSuccess = (operation: string) => {
+  console.log(`[${operation}] Success`)
+  
+  // Optional: Send to analytics
+  // analytics.track('operation_success', { operation })
+}
+
+// ============================================================================
+// AI ASSISTANT GUIDELINES - PRACTICAL
+// ============================================================================
+
+/**
+ * For AI assistants generating code
+ */
+export const AI_GUIDELINES = {
+  STEP_1: 'Identify data risk level (HIGH/MEDIUM/LOW)',
+  STEP_2: 'Apply appropriate pattern (SAFE/BASIC/SIMPLE)',
+  STEP_3: 'Include error handling for MEDIUM+ risk',
+  STEP_4: 'Add user feedback for important operations',
+  STEP_5: 'Keep it simple - avoid over-engineering'
+} as const
+
+/**
+ * Red flags for AI to avoid
+ */
+export const AI_RED_FLAGS = [
+  'setState without persistence for user data',
+  'async operations without try-catch',
+  'financial operations without error handling',
+  'no user feedback for slow operations',
+  'complex abstractions for simple operations'
+] as const
+
+// ============================================================================
+// GETTING STARTED CHECKLIST
+// ============================================================================
+
+/**
+ * Minimum viable consistency - start here
+ */
+export const GETTING_STARTED = {
+  WEEK_1: [
+    '✅ Identify your high-risk operations',
+    '✅ Add basic error handling to financial/user operations',
+    '✅ Add loading states to slow operations'
+  ],
+  
+  WEEK_2: [
+    '✅ Implement SAFE pattern for 2-3 critical operations',
+    '✅ Add rollback logic to important operations',
+    '✅ Improve error messages for users'
+  ],
+  
+  ONGOING: [
+    '✅ Apply patterns to new features',
+    '✅ Review and improve error handling',
+    '✅ Monitor and fix consistency issues'
+  ]
+} as const
+
+/**
+ * Success metrics - keep it simple
+ */
+export const SUCCESS_METRICS = {
+  FEWER_BUG_REPORTS: 'Users complain less about lost data',
+  CLEARER_ERROR_MESSAGES: 'Users understand what went wrong',
+  FASTER_DEVELOPMENT: 'Developers spend less time debugging',
+  MORE_CONFIDENCE: 'Team feels confident deploying changes'
+} as const

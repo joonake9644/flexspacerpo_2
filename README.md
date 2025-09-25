@@ -218,6 +218,235 @@ npm run build
 - ESLint 코드 품질 검사
 - 빌드 테스트를 통한 구문 오류 검증
 
+## 🤖 AI Development Guidelines
+
+### For Cursor & Claude Code Users
+When working on this project, **ALWAYS** follow these critical rules:
+
+#### CRITICAL DATA CONSISTENCY PATTERN
+```typescript
+// ALL admin actions must follow this pattern:
+const handleAdminAction = async (id: string, newStatus: string) => {
+  // 1. Optimistic local update (immediate UX)
+  setLocalState(prev => prev.map(item =>
+    item.id === id ? {...item, status: newStatus} : item
+  ))
+
+  // 2. User feedback
+  showNotification(`Action completed: ${newStatus}`, 'success')
+
+  // 3. Firebase persistence (NEVER SKIP)
+  try {
+    await updateDoc(doc(db, 'collection', id), {
+      status: newStatus,
+      updatedAt: serverTimestamp()
+    })
+  } catch (error) {
+    console.warn('Firebase persistence failed:', error)
+  }
+}
+```
+
+#### KEY FILES TO CHECK
+- **📋 .cursorrules**: Cursor AI specific guidelines
+- **📚 CLAUDE.md**: Complete architecture documentation
+- **🔧 data-consistency-rules.ts**: Structured rules and templates
+- **📝 types.ts**: Type definitions with cross-component usage notes
+
+#### EMERGENCY KEYWORDS
+If you encounter these terms, immediately apply data consistency rules:
+- `admin approval`, `status change`, `booking approval`, `application approval`
+- `setState`, `setBookings`, `setApplications`
+- `data disappearing`, `UI freezing`
+
+#### QUICK CHECK COMMAND
+```bash
+npm run check:rules  # View data consistency guidelines
+```
+
+#### FORBIDDEN PATTERNS ❌
+- setState without Firebase persistence (data will disappear)
+- Local state updates without `await updateDoc()`
+- Missing `serverTimestamp()` on updates
+- Admin actions without user feedback
+
+## 🚨 해결된 주요 오류 사례 (Error Case Studies)
+
+### 1. 데이터 사라짐 문제 (Data Disappearing Issue)
+#### 🔴 문제상황
+```typescript
+// ❌ 문제가 있던 코드 (AdminSection.tsx:453-456)
+onClick={() => {
+  setApplications(prev => prev.map(ap =>
+    ap.id === a.id ? {...ap, status: 'approved'} : ap
+  ))
+  showNotification('프로그램 신청이 승인되었습니다.', 'success')
+}}
+```
+**증상:** 관리자가 승인 버튼 클릭 → 데이터가 일시적으로 변경 → 몇 초 후 원래 상태로 되돌아감
+
+#### 🟢 해결방법
+```typescript
+// ✅ 수정된 코드
+onClick={() => handleApplicationAction(a.id, 'approved')}
+
+const handleApplicationAction = async (applicationId: string, status: 'approved' | 'rejected') => {
+  // 1. 로컬 상태 업데이트 (즉시 UI 반영)
+  setApplications(prev => prev.map(app =>
+    app.id === applicationId ? { ...app, status } : app
+  ))
+
+  // 2. 사용자 피드백
+  showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
+
+  // 3. Firebase 영구저장 (핵심!)
+  try {
+    await updateDoc(doc(db, 'applications', applicationId), {
+      status,
+      updatedAt: serverTimestamp()
+    })
+  } catch (error) {
+    console.warn('Firebase 저장 실패:', error)
+  }
+}
+```
+
+#### 📋 원인분석
+- **원인:** `useFirestore` 훅의 실시간 리스너가 Firebase 데이터를 다시 가져와서 로컬 변경사항을 덮어씀
+- **영향범위:** AdminSection ↔ Dashboard ↔ BookingSection 간 데이터 불일치
+- **해결파일:** `AdminSection.tsx:154`, `types.ts:21`
+
+### 2. 관리자 생성 사용자 로그인 불가 (Admin-Created User Login Issue)
+#### 🔴 문제상황
+```
+사용자 시나리오:
+1. 관리자가 UserManagement에서 새 사용자 생성 (kun@naver.com)
+2. 해당 사용자가 로그인 시도
+3. "이메일 인증이 필요합니다" 오류 발생
+4. 로그인 불가능
+```
+
+#### 🟢 해결방법
+**Step 1: User 타입에 플래그 추가**
+```typescript
+// types.ts:21
+export interface User {
+  // ... 기존 필드들
+  adminCreated?: boolean // 관리자가 직접 생성한 사용자 (이메일 인증 우회)
+}
+```
+
+**Step 2: 사용자 생성 시 플래그 설정**
+```typescript
+// UserManagement.tsx:173
+await setDoc(doc(db, 'users', firebaseUser.uid), {
+  // ... 기존 데이터
+  adminCreated: true, // 이메일 인증 우회용
+})
+```
+
+**Step 3: 로그인 시 인증 우회**
+```typescript
+// use-auth.ts:85-88
+const login = async (email: string, password: string) => {
+  const result = await signInWithEmailAndPassword(auth, email, password)
+
+  // 관리자 생성 사용자인지 확인
+  const userDoc = await getDoc(doc(db, 'users', result.user.uid))
+  const isAdminCreated = userDoc.exists() ? userDoc.data()?.adminCreated === true : false
+
+  // 이메일 인증 확인 (관리자 생성 사용자는 건너뛰기)
+  if (!result.user.emailVerified && !isAdminCreated) {
+    // 인증 메일 발송 후 로그아웃
+  }
+
+  return true
+}
+```
+
+#### 📋 원인분석
+- **원인:** Firebase Auth의 이메일 인증 시스템과 관리자 직접 생성 플로우 간 불일치
+- **영향범위:** 관리자가 생성한 모든 사용자 계정
+- **해결파일:** `UserManagement.tsx:173`, `use-auth.ts:85-88`, `types.ts:21`
+
+### 3. UI 일시 멈춤 현상 (Temporary UI Freezing)
+#### 🔴 문제상황
+```
+사용자 경험:
+1. 관리자가 승인/거절 버튼 클릭
+2. Dashboard와 BookingSection이 1-2초간 빈 화면 표시
+3. 이후 정상 데이터 표시 복구
+```
+
+#### 🟢 해결방법
+**Step 1: useFirestore에 동기화 상태 관리 추가**
+```typescript
+// useFirestore.ts:9
+const [syncing, setSyncing] = useState(false)
+
+const handleDataSync = () => {
+  setSyncing(true)
+  setTimeout(() => setSyncing(false), 500) // 500ms 후 완료 표시
+}
+
+// 데이터 업데이트 시 동기화 상태 표시
+setBookings(prev => {
+  if (prev.length > 0) handleDataSync()
+  return list
+})
+```
+
+**Step 2: 컴포넌트에 동기화 표시 추가**
+```typescript
+// Dashboard.tsx:80, BookingSection.tsx:276
+{syncing && (
+  <div className="flex items-center gap-2 text-blue-600">
+    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+    <span className="text-sm">동기화 중...</span>
+  </div>
+)}
+```
+
+#### 📋 원인분석
+- **원인:** 실시간 리스너의 데이터 새로고침 중 필터된 뷰가 일시적으로 비워짐
+- **영향범위:** Dashboard의 pendingBookings, BookingSection의 activeBookings 등
+- **해결파일:** `useFirestore.ts:19`, `Dashboard.tsx:80`, `BookingSection.tsx:276`
+
+### 4. 컴포넌트 간 데이터 연계 불일치
+#### 🔴 문제패턴
+- AdminSection에서 승인 → Dashboard 카운트 업데이트 안됨
+- AdminSection에서 승인 → BookingSection 상태 반영 안됨
+- 브라우저 새로고침해야 정확한 데이터 표시
+
+#### 🟢 해결원칙
+1. **단일 데이터 소스:** `useFirestore` 훅을 통한 중앙집중식 관리
+2. **옵티미스틱 업데이트:** 즉시 로컬 상태 변경으로 UX 개선
+3. **백그라운드 동기화:** Firebase 영구저장으로 데이터 일관성 보장
+4. **실시간 전파:** Firestore 리스너를 통한 모든 컴포넌트 자동 업데이트
+
+### ⚡ 오류 방지 체크리스트
+개발 시 반드시 확인해야 할 항목들:
+
+#### Admin Action 구현 시
+- [ ] 로컬 상태 업데이트 (`setState`) 포함?
+- [ ] 사용자 피드백 (`showNotification`) 포함?
+- [ ] Firebase 영구저장 (`updateDoc`) 포함?
+- [ ] 에러 처리 (`try-catch`) 포함?
+- [ ] `serverTimestamp()` 사용?
+
+#### 테스트 시
+- [ ] AdminSection에서 동작 확인
+- [ ] Dashboard 카운트 즉시 업데이트 확인
+- [ ] BookingSection/ProgramSection 상태 반영 확인
+- [ ] 브라우저 새로고침 후 데이터 유지 확인
+- [ ] 다중 탭에서 실시간 동기화 확인
+
+#### 디버깅 시
+- [ ] 브라우저 콘솔에서 Firebase 에러 확인
+- [ ] Network 탭에서 Firestore 요청 확인
+- [ ] `console.log`로 로컬 상태 변경 추적
+- [ ] Firestore 콘솔에서 실제 데이터 변경 확인
+
 ## 📈 향후 개발 계획
 
 - [ ] 실시간 알림 시스템

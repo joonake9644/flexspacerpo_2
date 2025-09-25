@@ -14,6 +14,7 @@ interface BookingSectionProps {
   currentUser: User
   bookings: Booking[]
   setBookings: React.Dispatch<React.SetStateAction<Booking[]>>
+  syncing?: boolean
 }
 
 const StatusBadge: React.FC<{ status: 'approved' | 'pending' | 'rejected' | 'completed' | 'cancelled' }> = memo(({ status }) => {
@@ -52,7 +53,7 @@ const BookingListItem: React.FC<{ booking: Booking }> = memo(({ booking }) => (
   </div>
 ))
 
-const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, setBookings }) => {
+const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, setBookings, syncing = false }) => {
   const { facilities } = useFirestore()
   const { showNotification } = useNotification()
 
@@ -115,96 +116,101 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // 유효성 검증
-    if (!form.purpose || form.purpose.trim().length === 0) {
-      showNotification('대관 목적을 입력해주세요.', 'error')
-      return
-    }
-    if (form.purpose.trim().length < 2) {
-      showNotification('대관 목적은 최소 2자 이상 입력해주세요.', 'error')
-      return
-    }
-    if (!form.category || !form.startDate || !form.endDate || !form.startTime || !form.endTime) {
-      showNotification('모든 필수 항목을 입력해주세요.', 'error')
-      return
-    }
-
-    // 날짜 유효성 검증
-    const startDate = new Date(form.startDate)
-    const endDate = new Date(form.endDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    if (startDate < today) {
-      showNotification('시작일은 오늘 이후로 선택해주세요.', 'error')
-      return
-    }
-    if (endDate < startDate) {
-      showNotification('종료일은 시작일 이후로 선택해주세요.', 'error')
-      return
-    }
-
-    // 시간 유효성 검증
-    if (form.startTime >= form.endTime) {
-      showNotification('종료 시간은 시작 시간 이후로 선택해주세요.', 'error')
-      return
-    }
-
-    if (!form.facilityId) {
-      showNotification('시설을 선택해주세요.', 'error')
-      return
-    }
-
-    // 시설 중복 정책 검증
-    const facility = facilities.find(f => f.id === form.facilityId)
-    if (!facility) {
-      showNotification('선택된 시설을 찾을 수 없습니다.', 'error')
-      return
-    }
-
-    const policy = facility.bookingPolicy
-    const allowsOverlap = policy?.allowOverlap || false
-    const maxTeams = policy?.maxConcurrent || 1
-
-    // 겹치는 예약 확인
-    const overlappingBookings = bookings.filter(b => {
-      if (b.facilityId !== form.facilityId || b.status !== 'approved') return false
-
-      // 날짜 겹침 확인
-      const bookingStart = new Date(b.startDate)
-      const bookingEnd = new Date(b.endDate)
-      const selectedStart = new Date(form.startDate)
-      const selectedEnd = new Date(form.endDate)
-
-      const datesOverlap = bookingStart <= selectedEnd && bookingEnd >= selectedStart
-      if (!datesOverlap) return false
-
-      // 시간 겹침 확인
-      const [bStartH, bStartM] = b.startTime.split(':').map(Number)
-      const [bEndH, bEndM] = b.endTime.split(':').map(Number)
-      const [sStartH, sStartM] = form.startTime.split(':').map(Number)
-      const [sEndH, sEndM] = form.endTime.split(':').map(Number)
-
-      const bStart = bStartH * 60 + bStartM
-      const bEnd = bEndH * 60 + bEndM
-      const sStart = sStartH * 60 + sStartM
-      const sEnd = sEndH * 60 + sEndM
-
-      return bStart < sEnd && bEnd > sStart
-    })
-
-    // 중복 정책 위반 검사
-    if (!allowsOverlap && overlappingBookings.length > 0) {
-      showNotification('이 시설은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 신청할 수 없습니다.', 'error')
-      return
-    }
-
-    if (allowsOverlap && overlappingBookings.length >= maxTeams) {
-      showNotification(`이 시설은 최대 ${maxTeams}팀까지 동시 사용 가능합니다. 현재 ${overlappingBookings.length}팀이 예약되어 있어 추가 신청이 불가합니다.`, 'error')
-      return
-    }
+    // 즉시 버튼 비활성화 및 사용자 피드백 (중요: 클릭 즉시 반응)
     setSubmitting(true)
+    showNotification('대관 신청을 처리 중입니다...', 'info')
+
     try {
+      // 유효성 검증
+      if (!form.purpose || form.purpose.trim().length === 0) {
+        showNotification('대관 목적을 입력해주세요.', 'error')
+        return
+      }
+      if (form.purpose.trim().length < 2) {
+        showNotification('대관 목적은 최소 2자 이상 입력해주세요.', 'error')
+        return
+      }
+      if (!form.category || !form.startDate || !form.endDate || !form.startTime || !form.endTime) {
+        showNotification('모든 필수 항목을 입력해주세요.', 'error')
+        return
+      }
+
+      // 날짜 유효성 검증
+      const startDate = new Date(form.startDate)
+      const endDate = new Date(form.endDate)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      if (startDate < today) {
+        showNotification('시작일은 오늘 이후로 선택해주세요.', 'error')
+        return
+      }
+      if (endDate < startDate) {
+        showNotification('종료일은 시작일 이후로 선택해주세요.', 'error')
+        return
+      }
+
+      // 시간 유효성 검증
+      if (form.startTime >= form.endTime) {
+        showNotification('종료 시간은 시작 시간 이후로 선택해주세요.', 'error')
+        return
+      }
+
+      if (!form.facilityId) {
+        showNotification('시설을 선택해주세요.', 'error')
+        return
+      }
+
+      // 시설 중복 정책 검증
+      const facility = facilities.find(f => f.id === form.facilityId)
+      if (!facility) {
+        showNotification('선택된 시설을 찾을 수 없습니다.', 'error')
+        return
+      }
+
+      const policy = facility.bookingPolicy
+      const allowsOverlap = policy?.allowOverlap || false
+      const maxTeams = policy?.maxConcurrent || 1
+
+      // 겹치는 예약 확인
+      const overlappingBookings = bookings.filter(b => {
+        if (b.facilityId !== form.facilityId || b.status !== 'approved') return false
+
+        // 날짜 겹침 확인
+        const bookingStart = new Date(b.startDate)
+        const bookingEnd = new Date(b.endDate)
+        const selectedStart = new Date(form.startDate)
+        const selectedEnd = new Date(form.endDate)
+
+        const datesOverlap = bookingStart <= selectedEnd && bookingEnd >= selectedStart
+        if (!datesOverlap) return false
+
+        // 시간 겹침 확인
+        const [bStartH, bStartM] = b.startTime.split(':').map(Number)
+        const [bEndH, bEndM] = b.endTime.split(':').map(Number)
+        const [sStartH, sStartM] = form.startTime.split(':').map(Number)
+        const [sEndH, sEndM] = form.endTime.split(':').map(Number)
+
+        const bStart = bStartH * 60 + bStartM
+        const bEnd = bEndH * 60 + bEndM
+        const sStart = sStartH * 60 + sStartM
+        const sEnd = sEndH * 60 + sEndM
+
+        return bStart < sEnd && bEnd > sStart
+      })
+
+      // 중복 정책 위반 검사
+      if (!allowsOverlap && overlappingBookings.length > 0) {
+        showNotification('이 시설은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 신청할 수 없습니다.', 'error')
+        return
+      }
+
+      if (allowsOverlap && overlappingBookings.length >= maxTeams) {
+        showNotification(`이 시설은 최대 ${maxTeams}팀까지 동시 사용 가능합니다. 현재 ${overlappingBookings.length}팀이 예약되어 있어 추가 신청이 불가합니다.`, 'error')
+        return
+      }
+
+      // 유효성 검증 완료, 실제 처리 시작
       const payload: CreateBookingData = {
         purpose: form.purpose!,
         category: form.category as any,
@@ -216,26 +222,9 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         endTime: form.endTime!,
       }
 
-      console.log('대관 신청 요청 데이터:', payload)
+      // 즉시 성공 메시지 표시 및 로컬 상태 업데이트 (옵티미스틱 업데이트)
+      const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-      // Firebase Function 호출 시도
-      let result: any
-      let bookingId: string
-
-      try {
-        result = await createBookingCallable(payload)
-        console.log('대관 신청 응답:', result)
-        bookingId = result?.data?.bookingId || `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      } catch (functionError) {
-        console.warn('Firebase Function 호출 실패, 로컬에서 처리:', functionError)
-        // Function 호출 실패 시 로컬에서 ID 생성
-        bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      }
-
-      // 성공 여부에 관계없이 로컬 상태에 추가 (사용자 경험 개선)
-      showNotification('예약 신청이 완료되었습니다. 관리자 승인 후 확정됩니다.', 'success')
-
-      // 새로운 예약을 로컬 상태에 즉시 추가
       const newBooking: Booking = {
         id: bookingId,
         ...payload,
@@ -245,9 +234,12 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         status: 'pending',
         createdAt: new Date(),
       }
-      setBookings(prev => [newBooking, ...prev])
 
-      // 폼 초기화
+      // 즉시 UI 업데이트
+      setBookings(prev => [newBooking, ...prev])
+      showNotification('대관 신청이 완료되었습니다! 관리자 승인 후 확정됩니다.', 'success')
+
+      // 폼 즉시 초기화
       setForm({
         purpose: '',
         category: 'training' as any,
@@ -258,8 +250,27 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         endTime: '10:00',
         facilityId: '',
       })
-    } catch (e: any) {
-      const errorMessage = e?.message || '예약 실패: 알 수 없는 오류'
+
+      console.log('대관 신청 요청 데이터:', payload)
+
+      // 백그라운드에서 Firebase Function 호출 (사용자는 이미 성공 피드백 받음)
+      try {
+        const result = await createBookingCallable(payload)
+        console.log('대관 신청 Firebase 저장 성공:', result)
+
+        // 필요시 실제 bookingId로 업데이트
+        if (result?.data?.bookingId && result.data.bookingId !== bookingId) {
+          setBookings(prev => prev.map(b =>
+            b.id === bookingId ? { ...b, id: result.data.bookingId } : b
+          ))
+        }
+      } catch (functionError) {
+        console.warn('Firebase Function 호출 실패 (사용자는 이미 성공 피드백 받음):', functionError)
+        // 백그라운드 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시됨)
+      }
+
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : '예약 실패: 알 수 없는 오류'
       showNotification(errorMessage, 'error')
     } finally {
       setSubmitting(false)
@@ -272,6 +283,12 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">체육관 대관 / Gym Booking</h1>
           <p className="text-gray-600">체육관 공간을 예약하고 관리하세요 / Book and manage gym spaces</p>
+          {syncing && (
+            <div className="flex items-center gap-2 text-blue-600 mt-2">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+              <span className="text-xs">동기화 중...</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
@@ -479,7 +496,24 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
               <NumberInput value={form.numberOfParticipants||1} onChange={val=>setForm({...form, numberOfParticipants: val})} />
             </div>
             <div className="flex items-end">
-              <button type="submit" disabled={submitting} className="w-full md:w-auto px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium">대관 신청</button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className={`w-full md:w-auto px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                  submitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {submitting ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    신청 중...
+                  </div>
+                ) : (
+                  '대관 신청'
+                )}
+              </button>
             </div>
           </div>
         </form>

@@ -1,0 +1,367 @@
+
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Common Development Commands
+
+### Development Server
+```bash
+npm run dev                    # Start development server on port 5173
+```
+
+### Building & Testing
+```bash
+npm run build                  # Build for production
+npm run preview               # Preview production build
+npm run lint                  # Run ESLint for code quality
+```
+
+### Firebase & Testing
+```bash
+npm run firebase:emulators    # Start Firebase emulators (auth, firestore, functions, storage)
+npm run deploy               # Build and deploy to Firebase hosting
+npm run create-admin         # Create test admin account
+npm test:e2e                 # Run Playwright end-to-end tests
+npm test:e2e:ui              # Run Playwright tests with UI
+npm test:e2e:debug           # Run Playwright tests in debug mode
+```
+
+## Architecture Overview
+
+### Technology Stack
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS
+- **Backend**: Firebase (Authentication, Firestore, Functions, Storage)
+- **State Management**: React Hooks with custom hooks pattern
+- **Icons**: Lucide React
+- **Testing**: Playwright for E2E testing
+
+### Project Structure
+```
+flexspace-pro/
+├── components/           # React components (17 components)
+├── hooks/               # Custom React hooks (5 hooks)
+├── functions/           # Firebase Cloud Functions
+├── tests/               # Playwright E2E tests
+├── App.tsx             # Main application component
+├── types.ts            # TypeScript type definitions
+├── utils.ts            # Utility functions
+└── firebase.ts         # Firebase configuration
+```
+
+### Core Architecture Patterns
+
+#### Component Architecture
+- Main `App.tsx` uses lazy loading for larger components (AdminSection, BookingSection, etc.)
+- Dashboard component is eagerly loaded as it's the primary landing page
+- All components receive data via props (no Context API usage)
+- Suspense boundaries with loading fallbacks for lazy-loaded components
+
+#### Data Flow Pattern
+- `useFirestore` hook provides centralized data management for all collections
+- Real-time Firestore listeners update local state automatically
+- Optimistic updates pattern used in admin actions for better UX
+- User-specific data filtering enforced at component level (`currentUser.id`)
+- **CRITICAL**: All data modifications must persist to Firebase AND update local state
+- **WARNING**: Never rely on local state updates alone - they will be overwritten by real-time listeners
+
+#### Authentication System
+- Firebase Authentication with email/password and Google OAuth
+- Role-based access control (user/admin roles)
+- Email verification required for new accounts (except admin-created users)
+- Admin-created users bypass email verification via `adminCreated` flag
+- Admin elevation requires manual Firestore document updates
+
+### Key Development Guidelines
+
+#### User Data Security
+- Always filter data by `currentUser.id` for user-specific views
+- Use `useMemo` for expensive filtering operations:
+```typescript
+const myBookings = useMemo(() =>
+  bookings.filter(b => b.userId === currentUser.id),
+  [bookings, currentUser.id]
+)
+```
+
+#### Firebase Timestamp Handling
+- All Firebase timestamps require safe processing:
+```typescript
+const displayDate = (timestamp) => {
+  return (timestamp?.toDate ? timestamp.toDate() : new Date(timestamp || 0)).toLocaleDateString()
+}
+```
+
+#### State Management Pattern
+- Use optimistic updates for admin actions
+- Immediate UI feedback with background server sync
+- Error handling that doesn't break user experience
+
+#### Performance Optimizations
+- Lazy loading for non-critical components
+- React.memo() and useCallback() for expensive operations
+- Manual chunk splitting for Firebase, React, and icon libraries in Vite config
+
+### Collections & Data Models
+
+#### Core Collections (COLLECTIONS constant in types.ts)
+- `users` - User profiles with role-based access
+- `bookings` - Facility bookings with approval workflow
+- `programs` - Fitness programs with enrollment management
+- `applications` - Program applications with approval status
+- `facilities` - Gym facilities and equipment
+- `notifications` - System notifications
+
+#### Key TypeScript Types
+- `User` - User profile with role and authentication data (includes `adminCreated` flag)
+- `Booking` - Facility reservations with status workflow
+- `Program` - Class programs with scheduling and capacity
+- `ProgramApplication` - User enrollment applications
+- `Facility` - Physical spaces and equipment
+
+### Development Environment
+
+#### Environment Variables (.env.local)
+```env
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=
+```
+
+#### Firebase Emulator Support
+- Set `VITE_USE_EMULATOR=true` to use local Firebase emulators
+- Emulator ports: Auth (9099), Firestore (8080), Storage (9199)
+- Use `npm run firebase:emulators` to start emulator suite
+
+### Testing Strategy
+
+#### E2E Testing with Playwright
+- Tests located in `/tests` directory
+- Configuration in `playwright.config.ts`
+- Test admin workflows, booking flows, and user interactions
+- Run `npm run test:e2e` for headless testing
+
+### Code Quality & Standards
+
+#### ESLint Configuration
+- TypeScript strict mode enabled
+- React hooks rules enforced
+- React refresh plugin for hot reloading
+- No unused variables or imports allowed
+
+#### Import Path Structure
+- Use `@/` alias for root-level imports (configured in vite.config.ts)
+- Components imported from `@/components/`
+- Hooks imported from `@/hooks/`
+- Types imported from `@/types`
+
+### Special Considerations
+
+#### Admin Account Management
+- Initial admin created via `npm run create-admin` script
+- Default test admin: `admin@flexspace.test` / `FlexAdmin2025!`
+- Admin role elevation requires Firestore console access
+- Never commit admin credentials to repository
+
+#### Admin-Created User Authentication Flow
+- **Problem**: Admin-created users couldn't login due to missing email verification
+- **Solution**: `adminCreated` flag in User model bypasses email verification
+- **Implementation**:
+  - `UserManagement.tsx`: Sets `adminCreated: true` when admin creates users
+  - `use-auth.ts`: Checks `adminCreated` flag to skip email verification during login
+  - `types.ts`: User interface includes optional `adminCreated?: boolean` field
+- **User Experience**:
+  - Admin-created users can login immediately without email verification
+  - Regular signup users still require email verification
+  - Page refresh needed after admin creates user (to restore admin session)
+- **Security**: Only admins can set `adminCreated` flag, maintaining security integrity
+
+#### Facility Booking System
+- Supports single-use and shared facility bookings
+- Time slot validation prevents overlapping reservations
+- Recurring booking support with day-of-week patterns
+- Status workflow: pending → approved/rejected → completed/cancelled
+
+#### Real-time Features
+- Firestore real-time listeners for live data updates
+- Optimistic UI updates for immediate feedback
+- Background sync with error recovery patterns
+
+#### Data Synchronization & Admin Actions
+- **Problem**: Admin approval actions caused data to disappear and UI freezing
+- **Root Cause**: Conflict between optimistic updates and real-time Firestore listeners
+- **Solution**: Proper Firebase persistence in admin actions
+- **Implementation**:
+  - `AdminSection.tsx`: Added `handleApplicationAction` function with Firebase `updateDoc`
+  - `useFirestore.ts`: Enhanced with `syncing` state management and loading indicators
+  - `Dashboard.tsx` & `BookingSection.tsx`: Added sync status display
+- **Pattern**: Optimistic update (immediate UI) → Firebase persistence (background) → Real-time sync
+- **User Experience**: Immediate feedback with smooth synchronization indicators
+
+### CRITICAL Data Consistency Rules
+
+#### Cross-Component Data Synchronization
+**NEVER IGNORE THESE RULES - THEY PREVENT DATA LOSS AND UI FREEZING**
+
+1. **Firebase Persistence is MANDATORY**
+   ```typescript
+   // ❌ WRONG - Only local state update (data will disappear)
+   setApplications(prev => prev.map(app =>
+     app.id === id ? {...app, status: 'approved'} : app
+   ))
+
+   // ✅ CORRECT - Local update + Firebase persistence
+   setApplications(prev => prev.map(app =>
+     app.id === id ? {...app, status: 'approved'} : app
+   ))
+   await updateDoc(doc(db, 'applications', id), {
+     status: 'approved',
+     updatedAt: serverTimestamp()
+   })
+   ```
+
+2. **Real-time Listener Conflict Prevention**
+   - All CRUD operations must update Firebase first or simultaneously
+   - Local state updates without Firebase persistence will be overwritten
+   - Use optimistic updates for UX, but always persist to Firebase
+
+3. **Cross-Menu Data Consistency**
+   - AdminSection → Dashboard: Both share same data arrays (bookings, applications)
+   - AdminSection → BookingSection: Approval changes affect user's booking view
+   - Any status change in one component MUST be reflected in all other components
+   - **Root Cause**: Single source of truth is Firestore, not local state
+
+4. **Component Data Flow Validation**
+   ```typescript
+   // Components that share booking data:
+   // - AdminSection: Admin approves/rejects bookings
+   // - Dashboard: Shows pending counts and recent bookings
+   // - BookingSection: Shows user's personal bookings
+   //
+   // ALL must stay synchronized through Firebase persistence
+   ```
+
+5. **Required Pattern for All Admin Actions**
+   ```typescript
+   const handleAdminAction = async (itemId: string, newStatus: string) => {
+     // Step 1: Optimistic local update (immediate UX)
+     setLocalState(prev => prev.map(item =>
+       item.id === itemId ? {...item, status: newStatus} : item
+     ))
+
+     // Step 2: Show user feedback
+     showNotification(`Action completed: ${newStatus}`, 'success')
+
+     // Step 3: Firebase persistence (CRITICAL - never skip)
+     try {
+       await updateDoc(doc(db, 'collection', itemId), {
+         status: newStatus,
+         updatedAt: serverTimestamp()
+       })
+       console.log('Firebase persistence successful')
+     } catch (error) {
+       console.warn('Firebase persistence failed:', error)
+       // Note: Don't show error to user if optimistic update succeeded
+     }
+   }
+   ```
+
+6. **Data State Management Anti-Patterns**
+   - ❌ Only calling setState without Firebase update
+   - ❌ Assuming local state changes persist across component renders
+   - ❌ Not handling Firestore real-time listener overwrites
+   - ❌ Missing serverTimestamp() on updates (breaks ordering)
+   - ❌ Not providing user feedback during async operations
+
+7. **Testing Data Consistency**
+   - After admin approval: Check AdminSection, Dashboard, and BookingSection
+   - Verify data appears/disappears correctly in all views
+   - Test with browser refresh to ensure Firebase persistence
+   - Confirm real-time updates work across multiple browser tabs
+
+8. **Debugging Data Sync Issues**
+   - Check browser console for Firebase errors
+   - Verify Firestore Rules allow the operation
+   - Ensure all components use the same data source (`useFirestore` hook)
+   - Look for missing `await` keywords in async Firebase operations
+   - Check if `serverTimestamp()` is used for updatedAt fields
+
+## AI Development Assistant Guidelines
+
+### How to Recognize Data Consistency Issues
+When working with this codebase, ALWAYS check for these patterns:
+
+1. **Red Flags (Immediate Action Required)**
+   - Any `setState` without corresponding Firebase operation
+   - Local state updates in admin actions without `updateDoc` or `setDoc`
+   - Missing `await` keywords in Firebase operations
+   - Components showing different data for the same entities
+
+2. **Required Checklist Before Implementing Admin Actions**
+   ```typescript
+   // This checklist must be followed for ALL admin operations:
+   const adminActionChecklist = {
+     hasOptimisticUpdate: false,     // ✅ setLocalState first
+     hasUserFeedback: false,         // ✅ showNotification
+     hasFirebasePersistence: false,  // ✅ updateDoc/setDoc
+     hasErrorHandling: false,        // ✅ try/catch
+     hasTimestamp: false            // ✅ serverTimestamp()
+   }
+   ```
+
+3. **Component Interconnection Map**
+   ```typescript
+   // AI Assistant: Use this map to understand data flow
+   const DATA_FLOW_MAP = {
+     bookings: {
+       adminActions: 'AdminSection.tsx:handleBookingAction',
+       userView: 'BookingSection.tsx:activeBookings',
+       dashboard: 'Dashboard.tsx:pendingBookings',
+       sharedSource: 'useFirestore.ts:bookings'
+     },
+     applications: {
+       adminActions: 'AdminSection.tsx:handleApplicationAction',
+       userView: 'ProgramSection.tsx:myApplications',
+       dashboard: 'Dashboard.tsx:pendingApplications',
+       sharedSource: 'useFirestore.ts:applications'
+     }
+   }
+   ```
+
+4. **Standard Pattern Template (Copy-Paste Ready)**
+   ```typescript
+   // AI Assistant: Always use this template for admin actions
+   const handleAdminAction = async (id: string, newStatus: string) => {
+     // 1. Optimistic update (immediate UX)
+     setLocalState(prev => prev.map(item =>
+       item.id === id ? {...item, status: newStatus} : item
+     ))
+
+     // 2. User feedback
+     showNotification(`${action} successful`, 'success')
+
+     // 3. Firebase persistence (NEVER SKIP)
+     try {
+       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+       const { db } = await import('@/firebase')
+
+       await updateDoc(doc(db, 'collection_name', id), {
+         status: newStatus,
+         updatedAt: serverTimestamp()
+       })
+     } catch (error) {
+       console.warn('Firebase persistence failed:', error)
+       // Don't show user error if optimistic update worked
+     }
+   }
+   ```
+
+### AI Prompt Enhancement for Future Development
+When starting new development on this project, use this prompt:
+```
+"This is a React + Firebase project with real-time data synchronization. CRITICAL RULE: All admin actions must update both local state (optimistic) AND Firebase (persistence). Check CLAUDE.md for data consistency rules. Components AdminSection, Dashboard, and BookingSection share the same data arrays. Any status changes must persist to Firebase or data will disappear due to real-time listeners."
+```

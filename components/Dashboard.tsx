@@ -2,6 +2,7 @@ import React, { useMemo, useState, lazy, Suspense } from 'react'
 // 개발 가이드라인: 사용자별 데이터 필터링과 Firebase Timestamp 안전 처리 적용
 import { User, Booking, ProgramApplication, Program, ActiveTab } from '../types'
 import { Calendar as CalendarIcon, Users, BookOpen, UserCheck } from 'lucide-react'
+import { useFirestore } from '@/hooks/use-firestore'
 const DashboardCalendar = lazy(() => import('./DashboardCalendar'))
 
 interface DashboardProps {
@@ -10,6 +11,7 @@ interface DashboardProps {
   applications: ProgramApplication[]
   programs: Program[]
   setActiveTab: (tab: ActiveTab) => void
+  syncing?: boolean
 }
 
 const getProgramStatus = (program: Program) => {
@@ -51,7 +53,8 @@ const formatProgramSchedule = (program: Program) => {
   return `${days} ${program.startTime}-${program.endTime}`
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], applications = [], programs = [], setActiveTab }) => {
+const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], applications = [], programs = [], setActiveTab, syncing = false }) => {
+  const { users } = useFirestore()
   const myBookings = useMemo(() => bookings.filter(b => b.userId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()), [bookings, currentUser.id])
   const myApplications = useMemo(() => applications.filter(a => a.userId === currentUser.id).sort((a, b) => {
     const aDate = a.appliedAt?.toDate ? a.appliedAt.toDate() : new Date(a.appliedAt || 0)
@@ -65,12 +68,22 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], appli
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          {currentUser.role === 'admin' ? '관리자 대시보드 / Admin Dashboard' : '마이 대시보드 / My Dashboard'}
-        </h1>
-        <p className="text-gray-600">
-          {currentUser.role === 'admin' ? '체육관 운영 현황을 한눈에 확인하세요 / Check gym operational status at a glance' : '나의 예약과 프로그램 신청 현황입니다 / View your booking and program application status'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {currentUser.role === 'admin' ? '관리자 대시보드 / Admin Dashboard' : '마이 대시보드 / My Dashboard'}
+            </h1>
+            <p className="text-gray-600">
+              {currentUser.role === 'admin' ? '체육관 운영 현황을 한눈에 확인하세요 / Check gym operational status at a glance' : '나의 예약과 프로그램 신청 현황입니다 / View your booking and program application status'}
+            </p>
+          </div>
+          {syncing && (
+            <div className="flex items-center gap-2 text-blue-600">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <span className="text-sm">동기화 중...</span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -117,7 +130,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], appli
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">총 이용자 수 / Total Users</p>
-                  <p className="text-3xl font-bold text-blue-600">128</p>
+                  <p className="text-3xl font-bold text-blue-600">{users.length}</p>
                 </div>
                 <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
                   <Users className="w-6 h-6 text-blue-600" />

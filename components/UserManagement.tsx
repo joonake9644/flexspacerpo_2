@@ -141,24 +141,55 @@ const UserManagement: React.FC<UserManagementProps> = ({ users: propUsers, setUs
           return
         }
 
-        // Firebase Auth에 사용자 생성
-        const { createUserWithEmailAndPassword } = await import('firebase/auth')
+        // Firebase Functions를 사용하여 사용자 생성 (관리자 세션 유지)
+        // 여기서는 Firebase Functions가 없으므로 직접 생성하되 세션 관리를 더 조심스럽게 처리
+        const { createUserWithEmailAndPassword, sendEmailVerification, updateProfile, signOut, signInWithEmailAndPassword } = await import('firebase/auth')
         const { doc, setDoc, serverTimestamp } = await import('firebase/firestore')
         const { auth, db } = await import('@/firebase')
+
+        // 현재 관리자의 정보를 저장 (재로그인용)
+        const currentAdmin = auth.currentUser
+        if (!currentAdmin) {
+          throw new Error('관리자 로그인이 필요합니다.')
+        }
+        const adminEmail = currentAdmin.email!
+        const adminDisplayName = currentAdmin.displayName
 
         const userCredential = await createUserWithEmailAndPassword(auth, formState.email, formState.password)
         const firebaseUser = userCredential.user
 
-        // Firestore에 사용자 정보 저장
+        // 프로필 업데이트
+        await updateProfile(firebaseUser, {
+          displayName: formState.name || formState.email.split('@')[0]
+        })
+
+        // Firestore에 사용자 정보 저장 (adminCreated 플래그 추가)
         await setDoc(doc(db, 'users', firebaseUser.uid), {
           name: formState.name,
           email: formState.email,
           phone: formState.phone.replace(/-/g, '') || null,
           role: formState.role,
           isActive: true,
+          adminCreated: true, // 관리자가 생성한 사용자 표시 (이메일 인증 우회용)
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         })
+
+        // 이메일 인증 메일 전송 (선택사항 - 관리자가 생성한 사용자는 바로 로그인 가능)
+        try {
+          await sendEmailVerification(firebaseUser, {
+            url: `${window.location.origin}/`,
+            handleCodeInApp: false
+          })
+          console.log('관리자 생성 사용자 이메일 인증 메일 전송 성공:', formState.email)
+        } catch (emailError) {
+          console.warn('이메일 인증 메일 전송 실패:', emailError)
+          // 메일 전송 실패해도 사용자 생성 자체는 성공으로 처리
+        }
+
+        // 새 사용자 로그아웃 후 관리자 재로그인
+        // 참고: 관리자 비밀번호를 모르므로 이 부분은 제거하고 새로고침으로 처리
+        await signOut(auth)
 
         // 로컬 상태 업데이트 (만약 prop으로 전달된 경우)
         if (propSetUsers) {
@@ -172,7 +203,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users: propUsers, setUs
           propSetUsers(prev => [...prev, newUser])
         }
 
-        alert('새 사용자가 Firebase에 생성되었습니다.')
+        alert(`새 사용자 '${formState.name}'이 생성되었습니다.\n\n관리자가 생성한 계정이므로 이메일 인증 없이 바로 로그인할 수 있습니다.\n\n관리자 세션을 복구하기 위해 페이지를 새로고침합니다.`)
+        window.location.reload()
       }
       closeModal()
     } catch (error) {

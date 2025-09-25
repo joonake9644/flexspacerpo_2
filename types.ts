@@ -18,6 +18,9 @@ export interface User {
   role: UserRole
   isActive?: boolean
   photoURL?: string
+  adminCreated?: boolean // 관리자가 직접 생성한 사용자 (이메일 인증 우회)
+  // IMPORTANT: All User updates must persist to Firebase AND update local state
+  // Used across: UserManagement, Dashboard (user counts), AdminSection
 }
 
 export type BookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'completed'
@@ -37,12 +40,17 @@ export interface Booking {
   organization?: string
   category: BookingCategory
   numberOfParticipants?: number
-  status: BookingStatus
+  status: BookingStatus // CRITICAL: Status changes must persist to Firebase
   rejectionReason?: string
   adminNotes?: string
   recurrenceRule?: { days: number[] }
   createdAt?: any
   updatedAt?: any
+  // CROSS-COMPONENT USAGE:
+  // - AdminSection: Admin approves/rejects (handleBookingAction)
+  // - Dashboard: Shows pending counts and recent bookings
+  // - BookingSection: User's personal booking view
+  // STATUS FLOW: pending → approved/rejected → completed/cancelled
 }
 
 export type ProgramLevel = 'beginner' | 'intermediate' | 'advanced'

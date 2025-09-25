@@ -1,10 +1,11 @@
-import React, { useMemo, useState, useCallback, memo } from 'react'
+import React, { useMemo, useState, useCallback, memo, lazy, Suspense } from 'react'
 // 개발 가이드라인: 옵티미스틱 업데이트 패턴 적용 (즉시 UI 업데이트 → 백그라운드 서버 동기화)
 import { Booking, Program, ProgramApplication, User, Facility } from '@/types'
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '@/utils/firebase-functions'
-import { PlusCircle, Edit, Trash2, UserCheck, Calendar as CalendarIcon, Users, BookOpen, Clock, MapPin } from 'lucide-react'
+import { PlusCircle, Edit, Trash2, UserCheck, Calendar as CalendarIcon, Users, BookOpen } from 'lucide-react'
 import { useNotification } from '@/hooks/use-notification'
+const DashboardCalendar = lazy(() => import('./DashboardCalendar'))
 
 interface AdminSectionProps {
   currentUser: User
@@ -73,6 +74,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
 
   const [isProgramModalOpen, setIsProgramModalOpen] = useState(false)
   const [programToEdit, setProgramToEdit] = useState<Program | null>(null)
+  const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month')
 
   const emptyProgram: Omit<Program, 'id'> = {
     title: '', description: '', instructor: '', capacity: 10,
@@ -143,11 +145,32 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
     try {
       await updateReservationStatus({ reservationId: bookingId, status: newStatus })
       console.log('대관 상태 업데이트 성공:', bookingId, newStatus)
-    } catch (e: any) {
-      console.warn('Firebase Function 호출 실패 (로컬 상태는 이미 업데이트됨):', e?.message)
+    } catch (e: unknown) {
+      console.warn('Firebase Function 호출 실패 (로컬 상태는 이미 업데이트됨):', e instanceof Error ? e.message : 'Unknown error')
       // 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시했고, 로컬 상태는 업데이트됨)
     }
   }, [setBookings, showNotification])
+
+  const handleApplicationAction = useCallback(async (applicationId: string, status: 'approved' | 'rejected') => {
+    // 먼저 로컬 상태 업데이트 (사용자 경험 개선)
+    setApplications(prev => prev.map(app => app.id === applicationId ? { ...app, status } : app))
+    showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
+
+    // Firebase에 백그라운드로 저장
+    try {
+      const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+      const { db } = await import('@/firebase')
+
+      await updateDoc(doc(db, 'applications', applicationId), {
+        status,
+        updatedAt: serverTimestamp()
+      })
+      console.log('프로그램 신청 상태 업데이트 성공:', applicationId, status)
+    } catch (error) {
+      console.warn('Firebase 저장 실패 (로컬 상태는 이미 업데이트됨):', error)
+      // 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시했고, 로컬 상태는 업데이트됨)
+    }
+  }, [setApplications, showNotification])
 
   const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings])
   const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications])
@@ -169,7 +192,6 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
     endTime: '10:00'
   })
 
-  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false)
 
   const handleCreateStudent = useCallback(() => {
     // 유효성 검증
@@ -197,7 +219,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       startTime: newStudentForm.startTime,
       endTime: newStudentForm.endTime,
       purpose: newStudentForm.purpose,
-      category: newStudentForm.category as any,
+      category: newStudentForm.category as 'training' | 'class' | 'event',
       status: 'pending',
       numberOfParticipants: 1,
       createdAt: new Date()
@@ -448,19 +470,13 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          setApplications(prev => prev.map(ap => ap.id === a.id ? {...ap, status: 'approved'} : ap))
-                          showNotification('프로그램 신청이 승인되었습니다.', 'success')
-                        }}
+                        onClick={() => handleApplicationAction(a.id, 'approved')}
                         className="px-3 py-2 rounded-lg bg-green-100 text-green-700 border border-green-200 text-sm font-medium"
                       >
                         승인
                       </button>
                       <button
-                        onClick={() => {
-                          setApplications(prev => prev.map(ap => ap.id === a.id ? {...ap, status: 'rejected'} : ap))
-                          showNotification('프로그램 신청이 거절되었습니다.', 'success')
-                        }}
+                        onClick={() => handleApplicationAction(a.id, 'rejected')}
                         className="px-3 py-2 rounded-lg bg-red-100 text-red-700 border border-red-200 text-sm font-medium"
                       >
                         거절
@@ -507,10 +523,14 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
           <h3 className="text-lg font-semibold text-gray-900">전체 대관 캘린더</h3>
         </div>
 
-        <div className="text-center py-8 text-gray-500">
-          <CalendarIcon className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-          <p>캘린더 컴포넌트가 곧 추가됩니다</p>
-        </div>
+        <Suspense fallback={<div className="text-center py-8 text-gray-500">캘린더 로딩 중...</div>}>
+          <DashboardCalendar
+            bookings={bookings}
+            programs={programs}
+            view={calendarView}
+            setView={setCalendarView}
+          />
+        </Suspense>
       </div>
 
       {isProgramModalOpen && (
