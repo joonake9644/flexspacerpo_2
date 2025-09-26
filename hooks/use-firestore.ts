@@ -83,9 +83,9 @@ export const useFirestore = () => {
       })
     )
 
-    // applications (최신순)
+    // applications (최신순) - 실제 Firestore 컬렉션명 사용
     unsubs.push(
-      onSnapshot(query(collection(db, 'applications'), orderBy('appliedAt', 'desc')), (snap) => {
+      onSnapshot(query(collection(db, 'program_applications'), orderBy('appliedAt', 'desc')), (snap) => {
         const list: ProgramApplication[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
         setApplications(prev => {
           if (prev.length > 0) handleDataSync()

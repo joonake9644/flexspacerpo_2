@@ -213,7 +213,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], appli
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h4 className="font-semibold text-gray-900">{app.programTitle}</h4>
+                        <h4 className="font-semibold text-gray-900">{program?.title || app.programTitle || 'Unknown Program'}</h4>
                         {programStatus && programStatus.dDay !== null && (
                           <span className="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">D-{programStatus.dDay}</span>
                         )}

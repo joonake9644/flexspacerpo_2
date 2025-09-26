@@ -141,7 +141,6 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
     try {
       // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
       setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b))
-      showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
 
       // 2. Firebase에 직접 저장 (실시간 동기화 보장)
       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
@@ -155,7 +154,10 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
 
       console.log('대관 상태 Firebase 저장 성공:', bookingId, newStatus)
 
-      // 3. Firebase Function도 호출 (이메일 알림 등을 위해)
+      // 3. Firebase 저장 성공 후에만 성공 메시지 표시
+      showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
+
+      // 4. Firebase Function도 호출 (이메일 알림 등을 위해)
       try {
         await updateReservationStatus({ reservationId: bookingId, status: newStatus })
         console.log('Firebase Function 호출 성공:', bookingId, newStatus)
@@ -183,7 +185,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
       const { db } = await import('@/firebase')
 
-      await updateDoc(doc(db, 'applications', applicationId), {
+      await updateDoc(doc(db, 'program_applications', applicationId), {
         status,
         updatedAt: serverTimestamp(),
         [status === 'approved' ? 'approvedAt' : 'rejectedAt']: serverTimestamp()

@@ -120,7 +120,7 @@ export const COLLECTIONS = {
   USERS: 'users',
   BOOKINGS: 'bookings',
   PROGRAMS: 'programs',
-  APPLICATIONS: 'applications',
+  APPLICATIONS: 'program_applications',
   FACILITIES: 'facilities',
   NOTIFICATIONS: 'notifications',
   SYSTEM_CONFIG: 'system_config',
