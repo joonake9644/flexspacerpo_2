@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, memo, lazy, Suspense } from 'react'
 // 개발 가이드라인: 옵티미스틱 업데이트 패턴 적용 (즉시 UI 업데이트 → 백그라운드 서버 동기화)
-import { Booking, Program, ProgramApplication, User, Facility } from '@/types'
+import { Booking, Program, ProgramApplication, User, Facility, BookingCategory } from '@/types'
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '@/utils/firebase-functions'
 import { PlusCircle, Edit, Trash2, UserCheck, Calendar as CalendarIcon, Users, BookOpen } from 'lucide-react'
@@ -136,41 +136,68 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
 
   const handleBookingAction = useCallback(async (bookingId: string, action: 'approve'|'reject') => {
     const newStatus = action === 'approve' ? 'approved' : 'rejected'
+    const originalBookings = bookings
 
-    // 먼저 로컬 상태 업데이트 (사용자 경험 개선)
-    setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b))
-    showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
-
-    // Firebase Function 호출 시도 (백그라운드에서)
     try {
-      await updateReservationStatus({ reservationId: bookingId, status: newStatus })
-      console.log('대관 상태 업데이트 성공:', bookingId, newStatus)
-    } catch (e: unknown) {
-      console.warn('Firebase Function 호출 실패 (로컬 상태는 이미 업데이트됨):', e instanceof Error ? e.message : 'Unknown error')
-      // 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시했고, 로컬 상태는 업데이트됨)
+      // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b))
+      showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
+
+      // 2. Firebase에 직접 저장 (실시간 동기화 보장)
+      const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
+      const { db } = await import('@/firebase')
+
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        status: newStatus,
+        updatedAt: serverTimestamp(),
+        [action === 'approve' ? 'approvedAt' : 'rejectedAt']: serverTimestamp()
+      })
+
+      console.log('대관 상태 Firebase 저장 성공:', bookingId, newStatus)
+
+      // 3. Firebase Function도 호출 (이메일 알림 등을 위해)
+      try {
+        await updateReservationStatus({ reservationId: bookingId, status: newStatus })
+        console.log('Firebase Function 호출 성공:', bookingId, newStatus)
+      } catch (functionError) {
+        console.warn('Firebase Function 호출 실패 (데이터는 이미 저장됨):', functionError)
+      }
+
+    } catch (error) {
+      // 4. 실패시 롤백
+      console.error('대관 상태 업데이트 실패:', error)
+      setBookings(originalBookings)
+      showNotification('대관 상태 변경에 실패했습니다. 다시 시도해주세요.', 'error')
     }
-  }, [setBookings, showNotification])
+  }, [bookings, setBookings, showNotification])
 
   const handleApplicationAction = useCallback(async (applicationId: string, status: 'approved' | 'rejected') => {
-    // 먼저 로컬 상태 업데이트 (사용자 경험 개선)
-    setApplications(prev => prev.map(app => app.id === applicationId ? { ...app, status } : app))
-    showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
+    const originalApplications = applications
 
-    // Firebase에 백그라운드로 저장
     try {
+      // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
+      setApplications(prev => prev.map(app => app.id === applicationId ? { ...app, status } : app))
+      showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
+
+      // 2. Firebase에 직접 저장 (실시간 동기화 보장)
       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
       const { db } = await import('@/firebase')
 
       await updateDoc(doc(db, 'applications', applicationId), {
         status,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        [status === 'approved' ? 'approvedAt' : 'rejectedAt']: serverTimestamp()
       })
-      console.log('프로그램 신청 상태 업데이트 성공:', applicationId, status)
+
+      console.log('프로그램 신청 상태 Firebase 저장 성공:', applicationId, status)
+
     } catch (error) {
-      console.warn('Firebase 저장 실패 (로컬 상태는 이미 업데이트됨):', error)
-      // 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시했고, 로컬 상태는 업데이트됨)
+      // 3. 실패시 롤백
+      console.error('프로그램 신청 상태 업데이트 실패:', error)
+      setApplications(originalApplications)
+      showNotification('프로그램 신청 상태 변경에 실패했습니다. 다시 시도해주세요.', 'error')
     }
-  }, [setApplications, showNotification])
+  }, [applications, setApplications, showNotification])
 
   const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings])
   const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications])
@@ -183,7 +210,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
 
   const [newStudentForm, setNewStudentForm] = useState({
     name: '',
-    category: 'training',
+    category: 'class' as BookingCategory,
     purpose: '',
     facilityId: '',
     startDate: new Date().toISOString().split('T')[0],
@@ -193,7 +220,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
   })
 
 
-  const handleCreateStudent = useCallback(() => {
+  const handleCreateStudent = useCallback(async () => {
     // 유효성 검증
     if (!newStudentForm.name || newStudentForm.name.trim().length === 0) {
       showNotification('신청자 이름을 입력해주세요.', 'error')
@@ -208,8 +235,9 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       return
     }
 
+    const newBookingId = `booking-${Date.now()}`
     const newBooking: Booking = {
-      id: `booking-${Date.now()}`,
+      id: newBookingId,
       userId: currentUser.id,
       userName: newStudentForm.name,
       userEmail: currentUser.email,
@@ -219,17 +247,36 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       startTime: newStudentForm.startTime,
       endTime: newStudentForm.endTime,
       purpose: newStudentForm.purpose,
-      category: newStudentForm.category as 'training' | 'class' | 'event',
-      status: 'pending',
+      category: newStudentForm.category as BookingCategory,
+      status: 'approved',
       numberOfParticipants: 1,
       createdAt: new Date()
     }
+
+    // 즉시 로컬 상태 업데이트
     setBookings(prev => [newBooking, ...prev])
-    showNotification('대관 신청이 등록되었습니다.', 'success')
-    setIsStudentModalOpen(false)
+    showNotification('대관이 승인되어 등록되었습니다.', 'success')
+
+    // Firebase에 직접 저장
+    try {
+      const { doc, setDoc, serverTimestamp } = await import('firebase/firestore')
+      const { db } = await import('@/firebase')
+
+      await setDoc(doc(db, 'bookings', newBookingId), {
+        ...newBooking,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        approvedAt: serverTimestamp()
+      })
+      console.log('대관 신청 Firebase 저장 성공:', newBookingId)
+    } catch (error) {
+      console.warn('Firebase 저장 실패 (로컬 상태는 이미 업데이트됨):', error)
+    }
+
+    // 폼 초기화 완료
     setNewStudentForm({
       name: '',
-      category: 'training',
+      category: 'class' as BookingCategory,
       purpose: '',
       facilityId: '',
       startDate: new Date().toISOString().split('T')[0],
@@ -306,12 +353,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
             </div>
             <h3 className="text-lg font-semibold text-gray-900">수강생/팀 직접 등록</h3>
           </div>
-          <button
-            onClick={() => setIsStudentModalOpen(true)}
-            className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 px-4 py-2 rounded-lg hover:bg-blue-50"
-          >
-            <PlusCircle className="w-4 h-4"/> 등록하기
-          </button>
+          <span className="text-sm text-gray-600">아래 폼을 사용하여 대관을 등록하세요</span>
         </div>
 
         <form className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -344,9 +386,10 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
               value={newStudentForm.category}
               onChange={e => setNewStudentForm({...newStudentForm, category: e.target.value})}
             >
-              <option value="training">훈련</option>
               <option value="class">수업</option>
               <option value="event">행사</option>
+              <option value="club">동아리</option>
+              <option value="personal">개인</option>
             </select>
           </div>
 
@@ -442,7 +485,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
             <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
               <CalendarIcon className="w-5 h-5 text-orange-600"/>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">대기중인 대관 신청 ({pendingBookings.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-900">사용자 대관 신청 대기 ({pendingBookings.length})</h3>
           </div>
           <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
             {pendingBookings.length>0 ? pendingBookings.map(b => (

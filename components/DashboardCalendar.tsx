@@ -129,7 +129,9 @@ const DashboardCalendar: React.FC<DashboardCalendarProps> = ({ bookings, program
               <span className={`text-sm font-medium text-right ${d.isToday ? 'text-blue-600' : 'text-gray-800'}`}>{d.day}</span>
               <div className="mt-1 space-y-1 overflow-y-auto">
                 {d.eventsForDay.map(event => {
-                   const colors = event.type === 'booking' ? bookingCategoryColors[(event.originalData as Booking).category] : programCategoryColors[(event.originalData as Program).category];
+                   const colors = event.type === 'booking'
+                     ? bookingCategoryColors[(event.originalData as Booking).category] || { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-l-4 border-gray-500' }
+                     : programCategoryColors[(event.originalData as Program).category] || { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-l-4 border-gray-500' };
                    return (
                     <div key={event.id} className={`${colors.bg} ${colors.text} ${colors.border} text-xs rounded p-1.5 cursor-pointer`} title={generateTooltip(event)}>
                       <p className="font-semibold truncate">{event.title}</p>
@@ -162,7 +164,9 @@ const DashboardCalendar: React.FC<DashboardCalendarProps> = ({ bookings, program
                                 const end = event.endTime.split(':').map(Number);
                                 const top = (start[0] * 60 + start[1]) / 60 * 3;
                                 const height = ((end[0] * 60 + end[1]) - (start[0] * 60 + start[1])) / 60 * 3;
-                                const colors = event.type === 'booking' ? bookingCategoryColors[(event.originalData as Booking).category] : programCategoryColors[(event.originalData as Program).category];
+                                const colors = event.type === 'booking'
+                                  ? bookingCategoryColors[(event.originalData as Booking).category] || { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-l-4 border-gray-500' }
+                                  : programCategoryColors[(event.originalData as Program).category] || { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-l-4 border-gray-500' };
                                 return (
                                     <div key={event.id} style={{ top: `calc(3rem + ${top}rem)`, height: `${height}rem`}} className={`absolute left-1 right-1 ${colors.bg} ${colors.text} ${colors.border} p-2 rounded-lg text-xs overflow-hidden`} title={generateTooltip(event)}>
                                         <p className="font-bold">{event.title}</p><p>{event.startTime}-{event.endTime}</p>

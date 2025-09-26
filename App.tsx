@@ -1,16 +1,18 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useFirestore } from '@/hooks/use-firestore'
 import { User, ActiveTab } from '@/types'
 import { getFirebaseErrorMessage } from '@/utils'
-const LoginForm = lazy(() => import('@/components/LoginForm'))
-const Navigation = lazy(() => import('@/components/Navigation'))
+
+// Direct imports - no lazy loading for maximum stability
+import LoginForm from '@/components/LoginForm'
+import Navigation from '@/components/Navigation'
 import Dashboard from '@/components/Dashboard'
-const BookingSection = lazy(() => import('@/components/BookingSection'))
-const ProgramSection = lazy(() => import('@/components/ProgramSection'))
-const AdminSection = lazy(() => import('@/components/AdminSection'))
-const UserManagement = lazy(() => import('@/components/UserManagement'))
-const FacilityManagement = lazy(() => import('@/components/FacilityManagement'))
+import BookingSection from '@/components/BookingSection'
+import ProgramSection from '@/components/ProgramSection'
+import AdminSection from '@/components/AdminSection'
+import UserManagement from '@/components/UserManagement'
+import FacilityManagement from '@/components/FacilityManagement'
 import { NotificationContainer } from './components/Notification'
 
 export default function Home() {
@@ -101,66 +103,92 @@ export default function Home() {
   const renderContent = () => {
     if (!currentUser) return null
 
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <Dashboard
-            currentUser={currentUser}
-            bookings={bookings}
-            applications={applications}
-            programs={programs}
-            setActiveTab={setActiveTab}
-            syncing={syncing}
-          />
-        )
-      case 'booking':
-        return (
-          <BookingSection
-            currentUser={currentUser}
-            bookings={bookings}
-            setBookings={setBookings}
-            syncing={syncing}
-          />
-        )
-      case 'program':
-        return (
-          <ProgramSection
-            currentUser={currentUser}
-            programs={programs}
-            setPrograms={setPrograms}
-            applications={applications}
-            setApplications={setApplications}
-          />
-        )
-      case 'admin':
-        return (
-          <AdminSection
-            currentUser={currentUser}
-            bookings={bookings}
-            setBookings={setBookings}
-            applications={applications}
-            setApplications={setApplications}
-            programs={programs}
-            setPrograms={setPrograms}
-            users={users}
-            facilities={facilities}
-          />
-        )
-      case 'userManagement':
-        return <UserManagement users={users} setUsers={setUsers} />
-      case 'facilities':
-        return <FacilityManagement />
-      default:
-        return (
-          <Dashboard
-            currentUser={currentUser}
-            bookings={bookings}
-            applications={applications}
-            programs={programs}
-            setActiveTab={setActiveTab}
-            syncing={syncing}
-          />
-        )
+    try {
+      switch (activeTab) {
+        case 'dashboard':
+          return (
+            <Dashboard
+              currentUser={currentUser}
+              bookings={bookings}
+              applications={applications}
+              programs={programs}
+              setActiveTab={setActiveTab}
+              syncing={syncing}
+            />
+          )
+        case 'booking':
+          return (
+            <BookingSection
+              currentUser={currentUser}
+              bookings={bookings}
+              setBookings={setBookings}
+              syncing={syncing}
+            />
+          )
+        case 'program':
+          return (
+            <ProgramSection
+              currentUser={currentUser}
+              programs={programs}
+              setPrograms={setPrograms}
+              applications={applications}
+              setApplications={setApplications}
+            />
+          )
+        case 'admin':
+          return (
+            <AdminSection
+              currentUser={currentUser}
+              bookings={bookings}
+              setBookings={setBookings}
+              applications={applications}
+              setApplications={setApplications}
+              programs={programs}
+              setPrograms={setPrograms}
+              users={users}
+              facilities={facilities}
+            />
+          )
+        case 'userManagement':
+          return <UserManagement users={users} setUsers={setUsers} />
+        case 'facilities':
+          return <FacilityManagement />
+        default:
+          return (
+            <Dashboard
+              currentUser={currentUser}
+              bookings={bookings}
+              applications={applications}
+              programs={programs}
+              setActiveTab={setActiveTab}
+              syncing={syncing}
+            />
+          )
+      }
+    } catch (error) {
+      console.error('Component rendering error:', error)
+      return (
+        <div className="min-h-96 bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">화면을 불러오는 중 오류가 발생했습니다</h2>
+            <p className="text-gray-600 mb-4">다른 메뉴를 선택하거나 페이지를 새로고침해주세요.</p>
+            <div className="space-x-2">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                대시보드로 이동
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+              >
+                새로고침
+              </button>
+            </div>
+          </div>
+        </div>
+      )
     }
   }
 
@@ -178,18 +206,26 @@ export default function Home() {
   return (
     <>
       <NotificationContainer />
-      <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div></div>}>
-        {!currentUser ? (
-          <LoginForm onLogin={handleLogin} onSignup={handleSignup} onAdminLogin={handleAdminLogin} onGoogleLogin={handleGoogleLogin} />
-        ) : (
-          <div className="min-h-screen bg-gray-50">
-            <Navigation currentUser={currentUser} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
-            <main>
-              {renderContent()}
-            </main>
-          </div>
-        )}
-      </Suspense>
+      {!currentUser ? (
+        <LoginForm
+          onLogin={handleLogin}
+          onSignup={handleSignup}
+          onAdminLogin={handleAdminLogin}
+          onGoogleLogin={handleGoogleLogin}
+        />
+      ) : (
+        <div className="min-h-screen bg-gray-50">
+          <Navigation
+            currentUser={currentUser}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onLogout={handleLogout}
+          />
+          <main>
+            {renderContent()}
+          </main>
+        </div>
+      )}
     </>
   )
 }

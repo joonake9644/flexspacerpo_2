@@ -141,70 +141,99 @@ const UserManagement: React.FC<UserManagementProps> = ({ users: propUsers, setUs
           return
         }
 
-        // Firebase Functions를 사용하여 사용자 생성 (관리자 세션 유지)
-        // 여기서는 Firebase Functions가 없으므로 직접 생성하되 세션 관리를 더 조심스럽게 처리
-        const { createUserWithEmailAndPassword, sendEmailVerification, updateProfile, signOut, signInWithEmailAndPassword } = await import('firebase/auth')
-        const { doc, setDoc, serverTimestamp } = await import('firebase/firestore')
-        const { auth, db } = await import('@/firebase')
+        // Firebase Functions 방식으로 사용자 생성 (관리자 세션 유지)
+        const { httpsCallable } = await import('firebase/functions')
+        const { functions } = await import('@/firebase')
 
-        // 현재 관리자의 정보를 저장 (재로그인용)
-        const currentAdmin = auth.currentUser
-        if (!currentAdmin) {
-          throw new Error('관리자 로그인이 필요합니다.')
-        }
-        const adminEmail = currentAdmin.email!
-        const adminDisplayName = currentAdmin.displayName
-
-        const userCredential = await createUserWithEmailAndPassword(auth, formState.email, formState.password)
-        const firebaseUser = userCredential.user
-
-        // 프로필 업데이트
-        await updateProfile(firebaseUser, {
-          displayName: formState.name || formState.email.split('@')[0]
-        })
-
-        // Firestore에 사용자 정보 저장 (adminCreated 플래그 추가)
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
-          name: formState.name,
-          email: formState.email,
-          phone: formState.phone.replace(/-/g, '') || null,
-          role: formState.role,
-          isActive: true,
-          adminCreated: true, // 관리자가 생성한 사용자 표시 (이메일 인증 우회용)
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        })
-
-        // 이메일 인증 메일 전송 (선택사항 - 관리자가 생성한 사용자는 바로 로그인 가능)
         try {
-          await sendEmailVerification(firebaseUser, {
-            url: `${window.location.origin}/`,
-            handleCodeInApp: false
-          })
-          console.log('관리자 생성 사용자 이메일 인증 메일 전송 성공:', formState.email)
-        } catch (emailError) {
-          console.warn('이메일 인증 메일 전송 실패:', emailError)
-          // 메일 전송 실패해도 사용자 생성 자체는 성공으로 처리
-        }
-
-        // 새 사용자 로그아웃 후 관리자 재로그인
-        // 참고: 관리자 비밀번호를 모르므로 이 부분은 제거하고 새로고침으로 처리
-        await signOut(auth)
-
-        // 로컬 상태 업데이트 (만약 prop으로 전달된 경우)
-        if (propSetUsers) {
-          const newUser: User = {
-            id: firebaseUser.uid,
+          // Cloud Functions를 사용해서 관리자 세션을 유지하면서 사용자 생성
+          const createUser = httpsCallable(functions, 'createUserByAdmin')
+          const result = await createUser({
             name: formState.name,
             email: formState.email,
-            phone: formState.phone.replace(/-/g, ''),
+            phone: formState.phone.replace(/-/g, '') || null,
+            password: formState.password,
             role: formState.role
-          }
-          propSetUsers(prev => [...prev, newUser])
-        }
+          })
 
-        alert(`새 사용자 '${formState.name}'이 생성되었습니다.\n\n관리자가 생성한 계정이므로 이메일 인증 없이 바로 로그인할 수 있습니다.\n\n관리자 세션을 복구하기 위해 페이지를 새로고침합니다.`)
-        window.location.reload()
+          if (result.data.success) {
+            alert(`새 사용자 '${formState.name}'이 생성되었습니다.\n\n관리자가 생성한 계정이므로 이메일 인증 없이 바로 로그인할 수 있습니다.`)
+
+            // 로컬 상태 업데이트
+            if (propSetUsers) {
+              const newUser: User = {
+                id: result.data.uid,
+                name: formState.name,
+                email: formState.email,
+                phone: formState.phone.replace(/-/g, ''),
+                role: formState.role
+              }
+              propSetUsers(prev => [...prev, newUser])
+            }
+          } else {
+            throw new Error(result.data.error || '사용자 생성에 실패했습니다.')
+          }
+        } catch (functionsError) {
+          console.warn('Cloud Functions 사용자 생성 실패, 직접 생성 방식으로 전환:', functionsError)
+
+          // Cloud Functions 실패 시 직접 생성 (기존 방식)
+          const { createUserWithEmailAndPassword, sendEmailVerification, updateProfile, signOut } = await import('firebase/auth')
+          const { doc, setDoc, serverTimestamp } = await import('firebase/firestore')
+          const { auth, db } = await import('@/firebase')
+
+          // 현재 관리자의 정보를 저장
+          const currentAdmin = auth.currentUser
+          if (!currentAdmin) {
+            throw new Error('관리자 로그인이 필요합니다.')
+          }
+
+          const userCredential = await createUserWithEmailAndPassword(auth, formState.email, formState.password)
+          const firebaseUser = userCredential.user
+
+          // 프로필 업데이트
+          await updateProfile(firebaseUser, {
+            displayName: formState.name || formState.email.split('@')[0]
+          })
+
+          // Firestore에 사용자 정보 저장 (adminCreated 플래그 추가)
+          await setDoc(doc(db, 'users', firebaseUser.uid), {
+            name: formState.name,
+            email: formState.email,
+            phone: formState.phone.replace(/-/g, '') || null,
+            role: formState.role,
+            isActive: true,
+            adminCreated: true, // 관리자가 생성한 사용자 표시 (이메일 인증 우회용)
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+
+          // 이메일 인증 메일 전송
+          try {
+            await sendEmailVerification(firebaseUser, {
+              url: `${window.location.origin}/`,
+              handleCodeInApp: false
+            })
+          } catch (emailError) {
+            console.warn('이메일 인증 메일 전송 실패:', emailError)
+          }
+
+          // 새 사용자 로그아웃 (관리자 세션 복구를 위해)
+          await signOut(auth)
+
+          alert(`새 사용자 '${formState.name}'이 생성되었습니다.\n\n⚠️ 새 사용자 생성으로 인해 자동 로그아웃되었습니다.\n관리자 계정으로 다시 로그인해주세요.\n\n생성된 사용자는 이메일 인증 없이 바로 로그인할 수 있습니다.`)
+
+          // 로컬 상태 업데이트
+          if (propSetUsers) {
+            const newUser: User = {
+              id: firebaseUser.uid,
+              name: formState.name,
+              email: formState.email,
+              phone: formState.phone.replace(/-/g, ''),
+              role: formState.role
+            }
+            propSetUsers(prev => [...prev, newUser])
+          }
+        }
       }
       closeModal()
     } catch (error) {

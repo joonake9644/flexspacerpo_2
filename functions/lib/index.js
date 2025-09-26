@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onBookingStatusChange = exports.updateUserEmail = exports.subscribeToPush = exports.updateReservationStatus = exports.createProgramApplication = exports.createBooking = void 0;
+exports.onBookingStatusChange = exports.createUserByAdmin = exports.updateUserEmail = exports.subscribeToPush = exports.updateReservationStatus = exports.createProgramApplication = exports.createBooking = void 0;
 // ?좉린??愿怨?遺꾩꽍 諛?由ы뙥?좊쭅???듯빐 ?덉젙?붾맂 肄붾뱶
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -248,7 +248,7 @@ exports.updateUserEmail = functions.https.onCall(async (data, context) => {
         const userRef = db.collection('users').doc(uid);
         await userRef.update({ email: newEmail });
         // Optionally, trigger a verification email for the new address
-        // Note: The client-side `updateEmail` function already handles this, 
+        // Note: The client-side `updateEmail` function already handles this,
         // but this ensures it happens even if only the function is called.
         // await admin.auth().generateEmailVerificationLink(newEmail);
         return { success: true, message: 'Email updated successfully.' };
@@ -260,6 +260,69 @@ exports.updateUserEmail = functions.https.onCall(async (data, context) => {
             throw new functions.https.HttpsError('already-exists', 'The new email address is already in use by another account.');
         }
         throw new functions.https.HttpsError('internal', 'An unexpected error occurred while updating the email.');
+    }
+});
+/**
+ * Creates a new user via admin without affecting admin session.
+ * Only admins can call this function.
+ */
+exports.createUserByAdmin = functions.https.onCall(async (data, context) => {
+    // 1. Authentication and admin check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
+    }
+    const isAdmin = await isUserAdmin(context.auth.uid);
+    if (!isAdmin) {
+        throw new functions.https.HttpsError('permission-denied', '관리자 권한이 필요합니다.');
+    }
+    // 2. Input validation
+    const { name, email, phone, password, role } = data;
+    if (!name || !email || !password) {
+        throw new functions.https.HttpsError('invalid-argument', '이름, 이메일, 비밀번호는 필수입니다.');
+    }
+    if (!['user', 'admin'].includes(role)) {
+        throw new functions.https.HttpsError('invalid-argument', '올바른 권한을 선택하세요.');
+    }
+    try {
+        // 3. Create user in Firebase Auth using Admin SDK
+        const userRecord = await admin.auth().createUser({
+            email: email,
+            password: password,
+            displayName: name,
+            emailVerified: true, // Admin-created users skip email verification
+        });
+        // 4. Create user document in Firestore
+        const userDoc = {
+            name: name,
+            email: email,
+            phone: phone || null,
+            role: role,
+            isActive: true,
+            adminCreated: true, // Flag to bypass email verification on login
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        await db.collection('users').doc(userRecord.uid).set(userDoc);
+        console.log(`Admin ${context.auth.uid} successfully created user ${userRecord.uid} (${email})`);
+        return {
+            success: true,
+            uid: userRecord.uid,
+            message: `새 사용자 '${name}'이 생성되었습니다.`
+        };
+    }
+    catch (error) {
+        console.error('Admin user creation failed:', error);
+        // Provide specific error messages
+        if (error.code === 'auth/email-already-exists') {
+            throw new functions.https.HttpsError('already-exists', '이미 등록된 이메일입니다.');
+        }
+        else if (error.code === 'auth/weak-password') {
+            throw new functions.https.HttpsError('invalid-argument', '비밀번호가 너무 간단합니다.');
+        }
+        else if (error.code === 'auth/invalid-email') {
+            throw new functions.https.HttpsError('invalid-argument', '올바른 이메일 주소를 입력하세요.');
+        }
+        throw new functions.https.HttpsError('internal', '사용자 생성 중 오류가 발생했습니다.');
     }
 });
 // --- ?대찓??諛??몄떆 ?뚮┝ 愿??---

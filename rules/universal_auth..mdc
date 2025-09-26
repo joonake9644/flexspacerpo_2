@@ -4,7 +4,7 @@
 // Technology-agnostic guidelines for building robust authentication systems.
 // Focus on core patterns and principles rather than specific implementations.
 //
-// APPLIES TO: Any auth system (custom, Firebase, Auth0, Supabase, etc.)
+// APPLIES TO: Firebase Authentication system
 // PHILOSOPHY: "Secure by design, fail gracefully, guide users clearly"
 // ============================================================================
 
