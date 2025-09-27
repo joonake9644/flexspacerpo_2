@@ -41,7 +41,7 @@ test.describe('체육관 대관 시스템', () => {
     await page.fill('input[value=""][type="text"]', '테스트 대관 신청');
 
     // 분류 선택
-    await page.selectOption('select', 'training');
+    await page.selectOption('select', 'personal');
 
     // 시설 선택 (첫 번째 available facility 선택)
     const facilitySelect = page.locator('select').nth(1); // 두 번째 select가 시설 선택

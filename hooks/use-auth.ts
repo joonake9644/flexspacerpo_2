@@ -87,8 +87,11 @@ export const useAuth = () => {
       const userData = userDoc.exists() ? userDoc.data() : null
       const isAdminCreated = userData?.adminCreated === true
 
-      // 이메일 인증 확인 (관리자가 생성한 사용자는 건너뛰기)
-      if (!result.user.emailVerified && !isAdminCreated) {
+      // 테스트 계정은 이메일 인증 생략
+      const isTestAccount = email === 'admin@flexspace.test' || email === 'flexadmin@test.com' || email === 'joonake@naver.com' || email === 'uu@naver.com' || email === 'kan@naver.com' || email === 'kun6@naver.com'
+
+      // 이메일 인증 확인 (관리자가 생성한 사용자나 테스트 계정은 건너뛰기)
+      if (!result.user.emailVerified && !isAdminCreated && !isTestAccount) {
         try {
           await sendEmailVerification(result.user, {
             url: `${window.location.origin}/`,
@@ -113,7 +116,7 @@ export const useAuth = () => {
       const cred = await signInWithEmailAndPassword(auth, email, password)
 
       // 테스트 계정은 이메일 인증 생략
-      const isTestAccount = email === 'admin@flexspace.test' || email === 'flexadmin@test.com' || email === 'joonake@naver.com' || email === 'uu@naver.com'
+      const isTestAccount = email === 'admin@flexspace.test' || email === 'flexadmin@test.com' || email === 'joonake@naver.com' || email === 'uu@naver.com' || email === 'kan@naver.com' || email === 'kun6@naver.com'
       if (!isTestAccount && !cred.user.emailVerified) {
         try {
           await sendEmailVerification(cred.user, {

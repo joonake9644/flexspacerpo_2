@@ -51,7 +51,7 @@ test.describe('네비게이션 및 페이지 전환', () => {
     await page.getByRole('button', { name: /체육관 대관|Booking/ }).click();
 
     await page.fill('input[value=""][type="text"]', '데이터 연계 테스트 대관');
-    await page.selectOption('select', 'training');
+    await page.selectOption('select', 'personal');
 
     const today = new Date().toISOString().split('T')[0];
     await page.locator('input[type="date"]').first().fill(today);

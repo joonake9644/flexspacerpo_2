@@ -365,3 +365,135 @@ When starting new development on this project, use this prompt:
 ```
 "This is a React + Firebase project with real-time data synchronization. CRITICAL RULE: All admin actions must update both local state (optimistic) AND Firebase (persistence). Check CLAUDE.md for data consistency rules. Components AdminSection, Dashboard, and BookingSection share the same data arrays. Any status changes must persist to Firebase or data will disappear due to real-time listeners."
 ```
+
+## CRITICAL AUTHENTICATION & USER MANAGEMENT RULES
+
+### Firebase Functions Import Consistency
+**NEVER IMPORT FROM MULTIPLE SOURCES - CAUSES INITIALIZATION CONFLICTS**
+
+```typescript
+// ✅ CORRECT - Always use firebase.ts as single source
+import { functions } from '@/firebase'
+
+// ❌ WRONG - Creates duplicate Functions instances
+import { functions } from '@/utils/firebase-functions'
+```
+
+**Rule**: All components must import `functions` from `@/firebase` to avoid initialization conflicts that cause Firebase operations to fail.
+
+**Affected Files**: AdminSection.tsx, BookingSection.tsx, ProgramSection.tsx - ALL must use consistent import path.
+
+### Admin-Created User Authentication Rules
+**NEVER SEND EMAIL VERIFICATION TO ADMIN-CREATED USERS**
+
+#### UserManagement.tsx Rules:
+```typescript
+// ✅ CORRECT - Admin-created users skip email verification
+console.log('관리자가 직접 생성한 사용자이므로 이메일 인증 메일을 발송하지 않습니다.')
+
+// ❌ WRONG - Sending email verification defeats the purpose
+await sendEmailVerification(firebaseUser, {...})
+```
+
+**Critical Implementation Points:**
+1. **Firestore Document**: All admin-created users MUST have `adminCreated: true` flag
+2. **Email Verification**: NEVER send verification emails to admin-created users
+3. **Login Bypass**: Admin-created users should login without email verification
+
+#### use-auth.ts Authentication Logic:
+```typescript
+// ✅ CORRECT - Multi-layer authentication bypass
+const isAdminCreated = userData?.adminCreated === true
+const isTestAccount = email === 'admin@flexspace.test' || email === 'kan@naver.com' // etc.
+
+if (!result.user.emailVerified && !isAdminCreated && !isTestAccount) {
+  // Only block login if NONE of the bypass conditions are met
+}
+```
+
+### Test Account Management
+**MAINTAIN CONSISTENT TEST ACCOUNT LIST ACROSS ALL AUTH FUNCTIONS**
+
+Current test accounts (must be synchronized):
+- `admin@flexspace.test`
+- `flexadmin@test.com`
+- `joonake@naver.com`
+- `uu@naver.com`
+- `kan@naver.com`
+
+**Critical Locations to Update:**
+1. `use-auth.ts:login()` - General user login
+2. `use-auth.ts:adminLogin()` - Admin login
+3. Both functions MUST have identical test account arrays
+
+### Authentication Bypass Hierarchy
+**PRIORITY ORDER FOR EMAIL VERIFICATION BYPASS:**
+
+1. **Test Accounts** (highest priority) - Hardcoded email list
+2. **Admin Created Users** - `adminCreated: true` flag in Firestore
+3. **Regular Users** - Must complete email verification
+
+**Implementation Pattern:**
+```typescript
+const isTestAccount = [/* test emails */].includes(email)
+const isAdminCreated = userData?.adminCreated === true
+
+// Bypass if ANY condition is true
+if (!emailVerified && !isTestAccount && !isAdminCreated) {
+  // Require email verification
+}
+```
+
+### User Creation Workflow Rules
+**ADMIN CREATES USER → NO EMAIL VERIFICATION REQUIRED**
+
+#### Direct Creation Process (UserManagement.tsx):
+1. **Set Flag**: `adminCreated: true` in Firestore document
+2. **Skip Email**: Do NOT call `sendEmailVerification`
+3. **Immediate Access**: User can login without email verification
+4. **Admin Session**: Preserve admin session during user creation
+
+#### Cloud Functions Fallback:
+- If `createUserByAdmin` function fails, use direct creation
+- Both methods MUST set `adminCreated: true`
+- Both methods MUST skip email verification
+
+### Email Verification Error Prevention
+**COMMON MISTAKES TO AVOID:**
+
+1. **❌ Sending emails to admin-created users**
+2. **❌ Inconsistent test account lists between functions**
+3. **❌ Missing `adminCreated` flag during user creation**
+4. **❌ Using different Firebase Functions instances**
+5. **❌ Not preserving admin session during user creation**
+
+### Debugging Authentication Issues
+**STANDARD TROUBLESHOOTING CHECKLIST:**
+
+1. **Check Firebase Functions Import**: All components use `@/firebase`?
+2. **Verify Test Account List**: Same emails in both auth functions?
+3. **Confirm adminCreated Flag**: Set during admin user creation?
+4. **Console Logs**: Check for Firebase initialization errors
+5. **Email Verification**: Admin-created users skip verification?
+
+### Authentication State Management Anti-Patterns
+**NEVER DO THESE:**
+
+```typescript
+// ❌ Inconsistent import sources
+import { functions } from '@/utils/firebase-functions' // Some components
+import { functions } from '@/firebase'               // Other components
+
+// ❌ Missing test account in one function but not the other
+const isTestAccount = email === 'admin@flexspace.test' // Missing kan@naver.com
+
+// ❌ Sending email verification to admin-created users
+if (adminCreated) {
+  await sendEmailVerification(user) // WRONG!
+}
+
+// ❌ Not setting adminCreated flag
+await setDoc(doc(db, 'users', uid), {
+  name, email, role // Missing: adminCreated: true
+})
+```

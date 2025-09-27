@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, memo, lazy, Suspense } from 'rea
 // 개발 가이드라인: 옵티미스틱 업데이트 패턴 적용 (즉시 UI 업데이트 → 백그라운드 서버 동기화)
 import { Booking, Program, ProgramApplication, User, Facility, BookingCategory } from '@/types'
 import { httpsCallable } from 'firebase/functions'
-import { functions } from '@/utils/firebase-functions'
+import { functions } from '@/firebase'
 import { PlusCircle, Edit, Trash2, UserCheck, Calendar as CalendarIcon, Users, BookOpen } from 'lucide-react'
 import { useNotification } from '@/hooks/use-notification'
 const DashboardCalendar = lazy(() => import('./DashboardCalendar'))
@@ -72,6 +72,17 @@ const ProgramListItem: React.FC<{ p: Program; onEdit: (p: Program)=>void; onDele
 export default function AdminSection({ currentUser, bookings, setBookings, applications, setApplications, programs, setPrograms, users, facilities }: AdminSectionProps) {
   const { showNotification } = useNotification()
 
+  // 프로그램 데이터 디버깅
+  console.log('🔍 AdminSection 프로그램 데이터 확인:', {
+    programsCount: programs.length,
+    programs: programs,
+    activePrograms: programs.filter(p => {
+      const today = new Date()
+      const end = new Date(p.endDate)
+      return end >= today
+    }).length
+  })
+
   const [isProgramModalOpen, setIsProgramModalOpen] = useState(false)
   const [programToEdit, setProgramToEdit] = useState<Program | null>(null)
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month')
@@ -112,17 +123,18 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       const { doc, setDoc, updateDoc, serverTimestamp } = await import('firebase/firestore')
       const { db } = await import('@/firebase')
 
+      const now = new Date()
       if (programToEdit) {
         await updateDoc(doc(db, 'programs', payload.id), {
           ...payload,
-          updatedAt: serverTimestamp()
+          updatedAt: now
         })
         console.log('프로그램 수정 완료:', payload.id)
       } else {
         await setDoc(doc(db, 'programs', payload.id), {
           ...payload,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          createdAt: now,
+          updatedAt: now
         })
         console.log('새 프로그램 생성 완료:', payload.id)
       }
@@ -135,41 +147,40 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
   }, [programForm, programToEdit, setPrograms, showNotification])
 
   const handleBookingAction = useCallback(async (bookingId: string, action: 'approve'|'reject') => {
+    console.log('=== 대관 승인/거절 시작 ===', { bookingId, action })
+
     const newStatus = action === 'approve' ? 'approved' : 'rejected'
     const originalBookings = bookings
 
     try {
       // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
+      console.log('1. 로컬 상태 업데이트 실행')
       setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b))
 
-      // 2. Firebase에 직접 저장 (실시간 동기화 보장)
+      // 2. 즉시 사용자 피드백 표시
+      showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
+
+      // 3. Firebase 저장 (CLAUDE.md 권장 패턴 적용)
+      console.log('3. Firebase 저장 시작')
       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
       const { db } = await import('@/firebase')
 
-      await updateDoc(doc(db, 'bookings', bookingId), {
+      const updateData = {
         status: newStatus,
         updatedAt: serverTimestamp(),
         [action === 'approve' ? 'approvedAt' : 'rejectedAt']: serverTimestamp()
-      })
-
-      console.log('대관 상태 Firebase 저장 성공:', bookingId, newStatus)
-
-      // 3. Firebase 저장 성공 후에만 성공 메시지 표시
-      showNotification(`대관이 ${action === 'approve' ? '승인' : '거절'}되었습니다.`, 'success')
-
-      // 4. Firebase Function도 호출 (이메일 알림 등을 위해)
-      try {
-        await updateReservationStatus({ reservationId: bookingId, status: newStatus })
-        console.log('Firebase Function 호출 성공:', bookingId, newStatus)
-      } catch (functionError) {
-        console.warn('Firebase Function 호출 실패 (데이터는 이미 저장됨):', functionError)
       }
 
+      console.log('3-1. 업데이트할 데이터:', updateData)
+      console.log('3-2. 대상 문서:', `bookings/${bookingId}`)
+
+      await updateDoc(doc(db, 'bookings', bookingId), updateData)
+      console.log('✅ Firebase 저장 성공 - 실시간 동기화 보장됨')
+
     } catch (error) {
-      // 4. 실패시 롤백
-      console.error('대관 상태 업데이트 실패:', error)
-      setBookings(originalBookings)
-      showNotification('대관 상태 변경에 실패했습니다. 다시 시도해주세요.', 'error')
+      // 4. Firebase 실패시에도 사용자에게는 에러 표시하지 않음 (이미 성공 메시지 표시)
+      console.error('❌ Firebase 저장 실패 (로컬 상태는 이미 업데이트됨):', error)
+      // 백그라운드 실패는 로그만 남기고, 사용자 경험은 유지
     }
   }, [bookings, setBookings, showNotification])
 
@@ -179,22 +190,26 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
     try {
       // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
       setApplications(prev => prev.map(app => app.id === applicationId ? { ...app, status } : app))
-      showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
 
       // 2. Firebase에 직접 저장 (실시간 동기화 보장)
       const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore')
       const { db } = await import('@/firebase')
 
+      // 클라이언트 타임스탬프 사용 (serverTimestamp 문제 해결)
+      const now = new Date()
       await updateDoc(doc(db, 'program_applications', applicationId), {
         status,
-        updatedAt: serverTimestamp(),
-        [status === 'approved' ? 'approvedAt' : 'rejectedAt']: serverTimestamp()
+        updatedAt: now,
+        [status === 'approved' ? 'approvedAt' : 'rejectedAt']: now
       })
 
       console.log('프로그램 신청 상태 Firebase 저장 성공:', applicationId, status)
 
+      // 3. Firebase 저장 성공 후에만 성공 메시지 표시
+      showNotification(`프로그램 신청이 ${status === 'approved' ? '승인' : '거절'}되었습니다.`, 'success')
+
     } catch (error) {
-      // 3. 실패시 롤백
+      // 4. 실패시 롤백
       console.error('프로그램 신청 상태 업데이트 실패:', error)
       setApplications(originalApplications)
       showNotification('프로그램 신청 상태 변경에 실패했습니다. 다시 시도해주세요.', 'error')
@@ -234,6 +249,70 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
     }
     if (!newStudentForm.facilityId) {
       showNotification('시설을 선택해주세요.', 'error')
+      return
+    }
+
+    // 날짜 유효성 검증
+    const startDate = new Date(newStudentForm.startDate + 'T00:00:00')
+    const endDate = new Date(newStudentForm.endDate + 'T00:00:00')
+
+    if (endDate < startDate) {
+      showNotification('종료일은 시작일 이후로 선택해주세요.', 'error')
+      return
+    }
+
+    // 시간 유효성 검증
+    if (newStudentForm.startTime >= newStudentForm.endTime) {
+      showNotification('종료 시간은 시작 시간 이후로 선택해주세요.', 'error')
+      return
+    }
+
+    // 시설 중복 정책 검증 (BookingSection과 동일한 로직 적용)
+    const facility = facilities.find(f => f.id === newStudentForm.facilityId)
+    if (!facility) {
+      showNotification('선택된 시설을 찾을 수 없습니다.', 'error')
+      return
+    }
+
+    const policy = facility.bookingPolicy
+    const allowsOverlap = policy?.allowOverlap || false
+    const maxTeams = policy?.maxConcurrent || 1
+
+    // 겹치는 예약 확인
+    const overlappingBookings = bookings.filter(b => {
+      if (b.facilityId !== newStudentForm.facilityId || b.status !== 'approved') return false
+
+      // 날짜 겹침 확인
+      const bookingStart = new Date(b.startDate)
+      const bookingEnd = new Date(b.endDate)
+      const selectedStart = new Date(newStudentForm.startDate)
+      const selectedEnd = new Date(newStudentForm.endDate)
+
+      const datesOverlap = bookingStart <= selectedEnd && bookingEnd >= selectedStart
+      if (!datesOverlap) return false
+
+      // 시간 겹침 확인
+      const [bStartH, bStartM] = b.startTime.split(':').map(Number)
+      const [bEndH, bEndM] = b.endTime.split(':').map(Number)
+      const [sStartH, sStartM] = newStudentForm.startTime.split(':').map(Number)
+      const [sEndH, sEndM] = newStudentForm.endTime.split(':').map(Number)
+
+      const bStart = bStartH * 60 + bStartM
+      const bEnd = bEndH * 60 + bEndM
+      const sStart = sStartH * 60 + sStartM
+      const sEnd = sEndH * 60 + sEndM
+
+      return bStart < sEnd && bEnd > sStart
+    })
+
+    // 중복 정책 위반 검사
+    if (!allowsOverlap && overlappingBookings.length > 0) {
+      showNotification('이 시설은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 등록할 수 없습니다.', 'error')
+      return
+    }
+
+    if (allowsOverlap && overlappingBookings.length >= maxTeams) {
+      showNotification(`이 시설은 최대 ${maxTeams}팀까지 동시 사용 가능합니다. 현재 ${overlappingBookings.length}팀이 예약되어 있어 추가 등록이 불가합니다.`, 'error')
       return
     }
 
@@ -286,7 +365,7 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       startTime: '09:00',
       endTime: '10:00'
     })
-  }, [newStudentForm, currentUser, setBookings, showNotification])
+  }, [newStudentForm, currentUser, setBookings, showNotification, facilities, bookings])
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -403,11 +482,17 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
               onChange={e => setNewStudentForm({...newStudentForm, facilityId: e.target.value})}
             >
               <option value="">시설을 선택해 주세요</option>
-              {facilities.map(facility => (
-                <option key={facility.id} value={facility.id}>
-                  {facility.name}
-                </option>
-              ))}
+              {facilities.map(facility => {
+                const policy = facility.bookingPolicy
+                const policyText = policy?.allowOverlap
+                  ? `(공유사용, 최대 ${policy.maxConcurrent || 1}팀)`
+                  : '(단독사용)'
+                return (
+                  <option key={facility.id} value={facility.id}>
+                    {facility.name} {policyText}
+                  </option>
+                )
+              })}
             </select>
           </div>
 

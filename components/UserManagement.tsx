@@ -207,15 +207,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users: propUsers, setUs
             updatedAt: serverTimestamp(),
           })
 
-          // 이메일 인증 메일 전송
-          try {
-            await sendEmailVerification(firebaseUser, {
-              url: `${window.location.origin}/`,
-              handleCodeInApp: false
-            })
-          } catch (emailError) {
-            console.warn('이메일 인증 메일 전송 실패:', emailError)
-          }
+          // 관리자가 직접 생성한 사용자는 이메일 인증 메일을 보내지 않음
+          console.log('관리자가 직접 생성한 사용자이므로 이메일 인증 메일을 발송하지 않습니다.')
 
           // 새 사용자 로그아웃 (관리자 세션 복구를 위해)
           await signOut(auth)

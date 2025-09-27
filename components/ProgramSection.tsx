@@ -2,7 +2,7 @@ import React, { useMemo, useState, memo, useCallback } from 'react'
 import { User, Program, ProgramApplication } from '../types'
 import { Search, Users, Calendar as CalendarIcon, Clock, UserCheck, BookOpen } from 'lucide-react'
 import { httpsCallable } from 'firebase/functions'
-import { functions } from '@/utils/firebase-functions'
+import { functions } from '@/firebase'
 import { useNotification } from '../hooks/use-notification'
 
 const createProgramApplicationCallable = httpsCallable(functions, 'createProgramApplication')
@@ -103,28 +103,43 @@ const ProgramSection: React.FC<ProgramSectionProps> = ({ currentUser, programs, 
     }
 
     setApplying(programId)
+
+    // 1. 즉시 로컬 상태 업데이트 (옵티미스틱 업데이트)
+    const newApplication: ProgramApplication = {
+      id: `temp-${Date.now()}`, // 임시 ID
+      userId: currentUser.id,
+      programId,
+      status: 'pending',
+      appliedAt: new Date(),
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      programTitle: programs.find(p => p.id === programId)?.title || 'Unknown Program',
+    }
+    setApplications(prev => [newApplication, ...prev])
+
+    // 2. 즉시 성공 피드백 제공
+    showNotification('프로그램 신청이 완료되었습니다. 관리자 승인을 기다려주세요.', 'success')
+
+    // 3. 백그라운드에서 Firebase Function 호출
     try {
       const res: any = await createProgramApplicationCallable({ programId })
       if (res?.data?.success) {
-        showNotification('프로그램 신청이 완료되었습니다. 관리자 승인을 기다려주세요.', 'success')
-
-        // 새로운 신청을 로컬 상태에 즉시 추가
-        const newApplication: ProgramApplication = {
-          id: res.data.applicationId,
-          userId: currentUser.id,
-          programId,
-          status: 'pending',
-          appliedAt: new Date(),
-          userName: currentUser.name,
-          userEmail: currentUser.email,
-          programTitle: programs.find(p => p.id === programId)?.title || 'Unknown Program',
-        }
-        setApplications(prev => [newApplication, ...prev])
+        // 임시 ID를 실제 ID로 업데이트
+        setApplications(prev => prev.map(app =>
+          app.id === newApplication.id
+            ? { ...app, id: res.data.applicationId }
+            : app
+        ))
+        console.log('프로그램 신청 Firebase 저장 성공:', res.data.applicationId)
       } else {
+        // 실패 시 롤백
+        setApplications(prev => prev.filter(app => app.id !== newApplication.id))
         const errorMessage = res?.data?.message || '신청에 실패했습니다. 잠시 후 다시 시도해주세요.'
         showNotification(errorMessage, 'error')
       }
     } catch (e: any) {
+      // 실패 시 롤백
+      setApplications(prev => prev.filter(app => app.id !== newApplication.id))
       showNotification(`신청 실패: ${e?.message || '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'}`, 'error')
     } finally {
       setApplying(null)

@@ -41,17 +41,22 @@ const formatBookingDate = (b: Booking) => {
   return `${startDate} ~ ${endDate}${recurrenceStr}`
 }
 
-const BookingListItem: React.FC<{ booking: Booking }> = memo(({ booking }) => (
-  <div className="p-3 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="font-medium text-gray-900">{booking.purpose}</p>
-        <p className="text-sm text-gray-600">{booking.organization ? `${booking.organization} | ` : ''}{formatBookingDate(booking)} {booking.startTime}-{booking.endTime}</p>
+const BookingListItem: React.FC<{ booking: Booking; facilities: any[] }> = memo(({ booking, facilities }) => {
+  const facility = facilities.find(f => f.id === booking.facilityId)
+  return (
+    <div className="p-3 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium text-gray-900">{booking.purpose}</p>
+          <p className="text-sm text-gray-600">
+            {facility?.name} | {booking.organization ? `${booking.organization} | ` : ''}{formatBookingDate(booking)} {booking.startTime}-{booking.endTime}
+          </p>
+        </div>
+        <StatusBadge status={booking.status} />
       </div>
-      <StatusBadge status={booking.status} />
     </div>
-  </div>
-))
+  )
+})
 
 const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, setBookings, syncing = false }) => {
   const { facilities } = useFirestore()
@@ -127,7 +132,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         return
       }
       if (form.purpose.trim().length < 2) {
-        showNotification('대관 목적은 최소 2자 이상 입력해주세요.', 'error')
+        showNotification('체육관 목적을 최소 2글자 이상 입력해 주세요.', 'error')
         return
       }
       if (!form.category || !form.startDate || !form.endDate || !form.startTime || !form.endTime) {
@@ -174,7 +179,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
       // 겹치는 예약 확인
       const overlappingBookings = bookings.filter(b => {
-        if (b.facilityId !== form.facilityId || b.status !== 'approved') return false
+        if (b.facilityId !== form.facilityId || (b.status !== 'approved' && b.status !== 'pending')) return false
 
         // 날짜 겹침 확인
         const bookingStart = new Date(b.startDate)
@@ -199,14 +204,22 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         return bStart < sEnd && bEnd > sStart
       })
 
+      console.log('중복 검증:', {
+        facilityName: facility.name,
+        allowsOverlap,
+        maxTeams,
+        overlappingCount: overlappingBookings.length,
+        overlappingBookings: overlappingBookings.map(b => ({ id: b.id, purpose: b.purpose, status: b.status }))
+      })
+
       // 중복 정책 위반 검사
       if (!allowsOverlap && overlappingBookings.length > 0) {
-        showNotification('이 시설은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 신청할 수 없습니다.', 'error')
+        showNotification(`현재 [${facility.name}]은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 신청할 수 없습니다.`, 'error')
         return
       }
 
       if (allowsOverlap && overlappingBookings.length >= maxTeams) {
-        showNotification(`이 시설은 최대 ${maxTeams}팀까지 동시 사용 가능합니다. 현재 ${overlappingBookings.length}팀이 예약되어 있어 추가 신청이 불가합니다.`, 'error')
+        showNotification(`현재 [${facility.name}]은 ${maxTeams}팀 이상 제한으로 대관이 불가합니다.`, 'error')
         return
       }
 
@@ -319,7 +332,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">진행중인 대관 / Active Bookings</h2>
               <div className="space-y-3">
-                {activeBookings.map(b => <BookingListItem key={b.id} booking={b} />)}
+                {activeBookings.map(b => <BookingListItem key={b.id} booking={b} facilities={facilities} />)}
                 {activeBookings.length === 0 && <p className="text-center text-gray-500 py-10">진행중인 대관 신청이 없습니다.</p>}
               </div>
             </div>
@@ -327,7 +340,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">완료된 대관 / Completed Bookings</h2>
               <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                {completedBookings.map(b => <BookingListItem key={b.id} booking={b} />)}
+                {completedBookings.map(b => <BookingListItem key={b.id} booking={b} facilities={facilities} />)}
                 {completedBookings.length === 0 && <p className="text-center text-gray-500 py-10">완료된 대관이 없습니다.</p>}
               </div>
             </div>
