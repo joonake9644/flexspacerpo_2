@@ -6,6 +6,7 @@ import * as nodemailer from 'nodemailer';
 import * as webpush from 'web-push';
 
 import { Booking, Facility, CreateBookingData, User, ProgramApplication, CreateProgramApplicationData } from './types';
+import { sendBookingApplicationSlackAlert, sendBookingStatusSlackAlert, sendProgramApplicationSlackAlert, sendSlackWithRetry } from './notification-utils';
 // NOTE: Removed external app util imports for Functions build isolation
 
 // Firebase Admin SDK 珥덇린??(??踰덈쭔 ?ㅽ뻾?섎룄濡?蹂댁옣)
@@ -128,7 +129,27 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
       return newBookingRef.id;
     });
 
-    return { success: true, bookingId: newBookingId, message: '?덉빟 ?좎껌???깃났?곸쑝濡??꾨즺?섏뿀?듬땲??' };
+    // Slack 알림 전송 (관리자에게)
+    try {
+      const facilityDoc = await db.collection('facilities').doc(facilityId).get();
+      const facility = facilityDoc.exists ? facilityDoc.data() as Facility : { name: '알 수 없는 시설' };
+
+      const newBookingData: Omit<Booking, 'id'> = {
+        ...value,
+        userId,
+        userName: user.name,
+        userEmail: user.email,
+        status: 'pending',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      // Slack 알림 전송 (비동기, 실패해도 대관 신청은 성공)
+      await sendSlackWithRetry(() => sendBookingApplicationSlackAlert(newBookingData, user, facility));
+    } catch (slackError) {
+      console.warn('Slack 알림 전송 실패 (대관 신청은 성공):', slackError);
+    }
+
+    return { success: true, bookingId: newBookingId, message: '대관 신청이 성공적으로 접수되었습니다.' };
 
   } catch (err: any) {
     console.error('Booking creation failed:', err);
@@ -163,6 +184,22 @@ export const createProgramApplication = functions.https.onCall(async (data: Crea
   };
 
   await newApplicationRef.set(applicationData);
+
+  // Slack 알림 전송 (관리자에게)
+  try {
+    const userDoc = await db.collection('users').doc(context.auth.uid).get();
+    const user = userDoc.exists ? userDoc.data() as User : {
+      id: context.auth.uid,
+      name: context.auth.token?.name || 'Unknown User',
+      email: context.auth.token?.email || 'unknown@email.com',
+      role: 'user' as const
+    };
+
+    // Slack 알림 전송 (비동기, 실패해도 프로그램 신청은 성공)
+    await sendSlackWithRetry(() => sendProgramApplicationSlackAlert(applicationData, user));
+  } catch (slackError) {
+    console.warn('Slack 알림 전송 실패 (프로그램 신청은 성공):', slackError);
+  }
 
   return { success: true, applicationId: newApplicationRef.id };
 });
@@ -446,6 +483,23 @@ export const onBookingStatusChange = functions.firestore
         })
       );
     }
+
+    // 3. Slack Notification Promise
+    notificationPromises.push(
+      (async () => {
+        try {
+          // 시설 정보 가져오기
+          const facilityDoc = await db.collection('facilities').doc(after.facilityId).get();
+          const facility = facilityDoc.exists ? facilityDoc.data() as Facility : { name: '알 수 없는 시설' };
+
+          // Slack 알림 전송
+          await sendSlackWithRetry(() => sendBookingStatusSlackAlert(after, user, facility, before.status, after.status));
+          console.log(`Slack notification sent for booking status change: ${before.status} -> ${after.status}`);
+        } catch (slackError) {
+          console.error('Failed to send Slack notification:', slackError);
+        }
+      })()
+    );
 
     await Promise.all(notificationPromises);
 
