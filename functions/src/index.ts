@@ -21,7 +21,7 @@ const bookingSchema = Joi.object({
   endDate: Joi.string().isoDate().required(),
   startTime: Joi.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
   endTime: Joi.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required(),
-  purpose: Joi.string().min(5).max(100).required(),
+  purpose: Joi.string().min(2).max(100).required(),
   category: Joi.string().valid('personal', 'club', 'event', 'class').required(),
   organization: Joi.string().allow('').max(50),
   numberOfParticipants: Joi.number().integer().min(1).required(),
@@ -70,11 +70,29 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
       const facility = facilityDoc.data() as Facility;
 
       // Date 媛앹껜 ?앹꽦 ?놁씠 ISO 臾몄옄?대줈 吏곸젒 荑쇰━
+      // 동일 사용자의 중복 신청 방지 (최근 10초 내)
+      const recentUserBookings = await transaction.get(
+        bookingsRef
+          .where('userId', '==', userId)
+          .where('facilityId', '==', facilityId)
+          .where('startDate', '==', startDate)
+          .where('startTime', '==', startTime)
+          .limit(1)
+      );
+
+      if (!recentUserBookings.empty) {
+        const existingBooking = recentUserBookings.docs[0].data() as any;
+        const timeDiff = Date.now() - (existingBooking.createdAt?.toMillis() || 0);
+        if (timeDiff < 10000) { // 10초 내 중복 신청 차단
+          throw new functions.https.HttpsError('already-exists', '동일한 대관 신청이 이미 처리 중입니다.');
+        }
+      }
+
       const conflictQuery = bookingsRef
         .where('facilityId', '==', facilityId)
         .where('status', 'in', ['pending', 'approved'])
         .where('startTime', '<', endISO);
-      
+
       const snapshot = await transaction.get(conflictQuery);
       
       let totalParticipantsInOverlap = 0;

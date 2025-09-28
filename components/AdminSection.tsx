@@ -334,9 +334,18 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
       createdAt: new Date()
     }
 
-    // 즉시 로컬 상태 업데이트
-    setBookings(prev => [newBooking, ...prev])
-    showNotification('대관이 승인되어 등록되었습니다.', 'success')
+    // 즉시 로컬 상태 업데이트 (캘린더 즉시 표시용)
+    setBookings(prev => {
+      const updated = [newBooking, ...prev]
+      console.log('📅 관리자 대관 등록 완료 - 캘린더 업데이트:', {
+        bookingId: newBookingId,
+        purpose: newBooking.purpose,
+        status: newBooking.status,
+        totalBookings: updated.length
+      })
+      return updated
+    })
+    showNotification('대관이 승인되어 등록되었습니다. 캘린더에서 확인 가능합니다.', 'success')
 
     // Firebase에 직접 저장
     try {

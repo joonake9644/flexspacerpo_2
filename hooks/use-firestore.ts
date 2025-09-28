@@ -57,9 +57,16 @@ export const useFirestore = () => {
     unsubs.push(
       onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (snap) => {
         const list: Booking[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+
         setBookings(prev => {
           if (prev.length > 0) handleDataSync()
-          return list
+
+          // 간단한 중복 제거: ID를 기준으로 중복 제거된 최신 데이터만 유지
+          const uniqueBookings = list.filter((booking, index, self) =>
+            index === self.findIndex(b => b.id === booking.id)
+          )
+
+          return uniqueBookings
         })
         checkInitialLoad()
       }, (error) => {

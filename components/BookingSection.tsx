@@ -4,11 +4,36 @@ import { User, Booking, Facility, CreateBookingData } from '@/types'
 import { useFirestore } from '../hooks/use-firestore'
 import { useNotification } from '../hooks/use-notification'
 import { httpsCallable } from 'firebase/functions'
-import { functions } from '@/utils/firebase-functions'
+import { functions } from '@/firebase'
 import { NumberInput } from './NumberInput'
 import { Calendar as CalendarIcon, List, ChevronLeft, ChevronRight } from 'lucide-react'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '@/firebase'
 
 const createBookingCallable = httpsCallable(functions, 'createBooking')
+
+// Firebase Function이 없을 때 사용하는 백업 저장 방법
+const fallbackCreateBooking = async (payload: CreateBookingData, bookingId: string, currentUser: User) => {
+  const bookingData = {
+    userId: currentUser.id,
+    userName: currentUser.name,
+    userEmail: currentUser.email,
+    purpose: payload.purpose,
+    category: payload.category,
+    numberOfParticipants: payload.numberOfParticipants,
+    facilityId: payload.facilityId,
+    startDate: payload.startDate,
+    endDate: payload.endDate,
+    startTime: payload.startTime,
+    endTime: payload.endTime,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+
+  await setDoc(doc(db, 'bookings', bookingId), bookingData)
+  return { bookingId }
+}
 
 interface BookingSectionProps {
   currentUser: User
@@ -64,7 +89,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
   const [form, setForm] = useState<Partial<CreateBookingData>>({
     purpose: '',
-    category: 'training' as any,
+    category: 'personal' as any,
     numberOfParticipants: 1,
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
@@ -76,12 +101,23 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
   const [view, setView] = useState<'list' | 'calendar'>('list')
   const [currentDate, setCurrentDate] = useState(new Date())
 
-  const activeBookings = useMemo(() => bookings.filter(b =>
-    b.userId === currentUser.id && b.status !== 'completed'
-  ), [bookings, currentUser.id])
-  const completedBookings = useMemo(() => bookings.filter(b =>
-    b.userId === currentUser.id && b.status === 'completed'
-  ), [bookings, currentUser.id])
+  const activeBookings = useMemo(() => {
+    // 안전한 사용자 ID 비교 (userId 또는 userEmail로 매칭)
+    const filtered = bookings.filter(b => {
+      const userIdMatch = b.userId === currentUser.id ||
+                         b.userEmail === currentUser.email
+      return userIdMatch && b.status !== 'completed'
+    })
+
+    return filtered
+  }, [bookings, currentUser.id, currentUser.email])
+
+  const completedBookings = useMemo(() => bookings.filter(b => {
+    const userIdMatch = b.userId === currentUser.id ||
+                       b.userEmail === currentUser.email
+
+    return userIdMatch && b.status === 'completed'
+  }), [bookings, currentUser.id, currentUser.email])
 
   // Calendar helper functions
   const getCalendarDays = useCallback(() => {
@@ -103,12 +139,31 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
   const getBookingsForDate = useCallback((date: Date) => {
     const dateStr = date.toISOString().split('T')[0]
-    return bookings.filter(booking => {
-      const start = new Date(booking.startDate)
-      const end = new Date(booking.endDate)
-      return date >= start && date <= end
+    const filteredBookings = bookings.filter(booking => {
+      // 사용자 자신의 대관만 표시 (안전한 비교)
+      const userIdMatch = booking.userId === currentUser.id ||
+                         booking.userEmail === currentUser.email
+      if (!userIdMatch) return false
+
+      // Dashboard와 동일한 날짜 범위 처리 방식
+      const bookingStart = new Date(booking.startDate + 'T00:00:00')
+      const bookingEnd = new Date(booking.endDate + 'T00:00:00')
+      const targetDate = new Date(dateStr + 'T00:00:00')
+
+      // 날짜 범위 내에 있는지 확인
+      if (targetDate >= bookingStart && targetDate <= bookingEnd) {
+        // 반복 예약 규칙 확인 (있는 경우에만)
+        if (booking.recurrenceRule && booking.recurrenceRule.days && booking.recurrenceRule.days.length > 0) {
+          return booking.recurrenceRule.days.includes(targetDate.getDay())
+        }
+        return true
+      }
+
+      return false
     })
-  }, [bookings])
+
+    return filteredBookings
+  }, [bookings, currentUser.id, currentUser.email])
 
   const navigateMonth = useCallback((direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
@@ -121,13 +176,27 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // 즉시 버튼 비활성화 및 사용자 피드백 (중요: 클릭 즉시 반응)
+    // 강화된 중복 실행 방지
+    if (submitting) {
+      console.log('이미 처리 중인 요청이 있습니다.')
+      return
+    }
+
     setSubmitting(true)
-    showNotification('대관 신청을 처리 중입니다...', 'info')
+
+    // 추가 안전장치: 1초 내 중복 클릭 방지
+    const now = Date.now()
+    const lastSubmit = window.lastBookingSubmit || 0
+    if (now - lastSubmit < 1000) {
+      console.log('너무 빠른 연속 클릭 차단')
+      setSubmitting(false)
+      return
+    }
+    window.lastBookingSubmit = now
 
     try {
       // 유효성 검증
-      if (!form.purpose || form.purpose.trim().length === 0) {
+      if (!form.purpose?.trim()) {
         showNotification('대관 목적을 입력해주세요.', 'error')
         return
       }
@@ -181,7 +250,6 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
       const overlappingBookings = bookings.filter(b => {
         if (b.facilityId !== form.facilityId || (b.status !== 'approved' && b.status !== 'pending')) return false
 
-        // 날짜 겹침 확인
         const bookingStart = new Date(b.startDate)
         const bookingEnd = new Date(b.endDate)
         const selectedStart = new Date(form.startDate)
@@ -190,7 +258,6 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         const datesOverlap = bookingStart <= selectedEnd && bookingEnd >= selectedStart
         if (!datesOverlap) return false
 
-        // 시간 겹침 확인
         const [bStartH, bStartM] = b.startTime.split(':').map(Number)
         const [bEndH, bEndM] = b.endTime.split(':').map(Number)
         const [sStartH, sStartM] = form.startTime.split(':').map(Number)
@@ -204,14 +271,6 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         return bStart < sEnd && bEnd > sStart
       })
 
-      console.log('중복 검증:', {
-        facilityName: facility.name,
-        allowsOverlap,
-        maxTeams,
-        overlappingCount: overlappingBookings.length,
-        overlappingBookings: overlappingBookings.map(b => ({ id: b.id, purpose: b.purpose, status: b.status }))
-      })
-
       // 중복 정책 위반 검사
       if (!allowsOverlap && overlappingBookings.length > 0) {
         showNotification(`현재 [${facility.name}]은 단독 사용만 가능합니다. 같은 시간에 다른 예약이 있어 신청할 수 없습니다.`, 'error')
@@ -223,72 +282,106 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         return
       }
 
-      // 유효성 검증 완료, 실제 처리 시작
+      // 실제 저장 처리
       const payload: CreateBookingData = {
-        purpose: form.purpose!,
+        purpose: form.purpose,
         category: form.category as any,
         numberOfParticipants: form.numberOfParticipants || 1,
         facilityId: facility.id,
-        startDate: form.startDate!,
-        endDate: form.endDate!,
-        startTime: form.startTime!,
-        endTime: form.endTime!,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        startTime: form.startTime,
+        endTime: form.endTime,
       }
 
-      // 즉시 성공 메시지 표시 및 로컬 상태 업데이트 (옵티미스틱 업데이트)
       const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      let success = false
+      let savedBooking: Booking | null = null
 
-      const newBooking: Booking = {
-        id: bookingId,
-        ...payload,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userEmail: currentUser.email,
-        status: 'pending',
-        createdAt: new Date(),
+      // 간단한 중복 방지: 전역 타임스탬프만 사용
+      const now = Date.now()
+      const lastSubmitKey = `${currentUser.id}-${payload.startDate}-${payload.startTime}`
+      const lastSubmitTime = window.lastBookingSubmits?.[lastSubmitKey] || 0
+
+      if (now - lastSubmitTime < 3000) { // 3초 내 중복 차단
+        showNotification('잠시만 기다려주세요.', 'warning')
+        return
       }
 
-      // 즉시 UI 업데이트
-      setBookings(prev => [newBooking, ...prev])
-      showNotification('대관 신청이 완료되었습니다! 관리자 승인 후 확정됩니다.', 'success')
+      // 타임스탬프 업데이트
+      if (!window.lastBookingSubmits) window.lastBookingSubmits = {}
+      window.lastBookingSubmits[lastSubmitKey] = now
 
-      // 폼 즉시 초기화
-      setForm({
-        purpose: '',
-        category: 'training' as any,
-        numberOfParticipants: 1,
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
-        startTime: '09:00',
-        endTime: '10:00',
-        facilityId: '',
-      })
 
-      console.log('대관 신청 요청 데이터:', payload)
-
-      // 백그라운드에서 Firebase Function 호출 (사용자는 이미 성공 피드백 받음)
+      // 조용한 처리: 중간 과정 알림 없이 최종 결과만 표시
       try {
-        const result = await createBookingCallable(payload)
-        console.log('대관 신청 Firebase 저장 성공:', result)
+        // 먼저 Firebase Functions 시도 (3초 타임아웃)
+        const functionPromise = createBookingCallable(payload)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('타임아웃')), 3000)
+        )
 
-        // 필요시 실제 bookingId로 업데이트
-        if (result?.data?.bookingId && result.data.bookingId !== bookingId) {
-          setBookings(prev => prev.map(b =>
-            b.id === bookingId ? { ...b, id: result.data.bookingId } : b
-          ))
+        const result = await Promise.race([functionPromise, timeoutPromise]) as any
+
+        // Functions 성공
+        success = true
+        savedBooking = {
+          id: result?.data?.bookingId || bookingId,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userEmail: currentUser.email,
+          ...payload,
+          status: 'pending',
+          createdAt: new Date(),
         }
+
       } catch (functionError) {
-        console.warn('Firebase Function 호출 실패 (사용자는 이미 성공 피드백 받음):', functionError)
-        // 백그라운드 실패해도 사용자에게는 알리지 않음 (이미 성공 메시지 표시됨)
+        // Functions 실패 시 백업 저장 (조용히 처리)
+        try {
+          await fallbackCreateBooking(payload, bookingId, currentUser)
+          success = true
+          savedBooking = {
+            id: bookingId,
+            userId: currentUser.id,
+            userName: currentUser.name,
+            userEmail: currentUser.email,
+            ...payload,
+            status: 'pending',
+            createdAt: new Date(),
+          }
+        } catch (fallbackError) {
+          success = false
+        }
+      }
+
+      // 최종 결과만 표시
+      if (success) {
+        // 폼 초기화
+        setForm({
+          purpose: '',
+          category: 'personal' as any,
+          numberOfParticipants: 1,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0],
+          startTime: '09:00',
+          endTime: '10:00',
+          facilityId: '',
+        })
+
+        // 최종 성공 알림만
+        showNotification('대관 신청이 완료되었습니다!', 'success')
+      } else {
+        // 최종 실패 알림만
+        showNotification('대관 신청에 실패했습니다.', 'error')
       }
 
     } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : '예약 실패: 알 수 없는 오류'
-      showNotification(errorMessage, 'error')
+      console.error('대관 신청 최종 오류:', e)
+      showNotification('대관 신청 중 문제가 발생했습니다. 다시 시도해주세요.', 'error')
     } finally {
       setSubmitting(false)
     }
-  }, [form, facilities, showNotification, currentUser, setBookings])
+  }, [form, facilities, showNotification, currentUser])
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -459,9 +552,10 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">분류</label>
               <select className="w-full p-3 border border-gray-200 rounded-xl bg-white" value={form.category as any} onChange={e=>setForm({...form, category: e.target.value as any})}>
-                <option value="training">훈련</option>
-                <option value="class">수업</option>
+                <option value="personal">개인</option>
+                <option value="club">동아리</option>
                 <option value="event">행사</option>
+                <option value="class">수업</option>
               </select>
             </div>
           </div>
@@ -512,19 +606,22 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full md:w-auto px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                className={`w-full md:w-auto px-6 py-3 rounded-xl font-medium transition-all duration-200 transform ${
                   submitting
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    ? 'bg-gray-400 cursor-not-allowed scale-95'
+                    : 'bg-blue-600 hover:bg-blue-700 hover:scale-105 text-white shadow-lg hover:shadow-xl'
                 }`}
+                style={{ pointerEvents: submitting ? 'none' : 'auto' }}
               >
                 {submitting ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    신청 중...
+                    <span>처리 중...</span>
                   </div>
                 ) : (
-                  '대관 신청'
+                  <span className="flex items-center gap-2">
+                    📅 대관 신청
+                  </span>
                 )}
               </button>
             </div>

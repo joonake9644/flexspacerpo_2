@@ -24,17 +24,33 @@ const categoryColors: { [key in Booking['category']]: { bg: string; text: string
     class: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-l-4 border-red-500' },
 };
 
+const statusMap: { [key in Booking['status']]: string } = {
+    pending: '대기중',
+    approved: '승인됨',
+    rejected: '거절됨',
+    cancelled: '취소됨',
+    completed: '완료됨'
+};
+
+const statusColors: { [key in Booking['status']]: { badge: string; text: string } } = {
+    pending: { badge: 'bg-yellow-100 text-yellow-800', text: 'text-yellow-600' },
+    approved: { badge: 'bg-green-100 text-green-800', text: 'text-green-600' },
+    rejected: { badge: 'bg-red-100 text-red-800', text: 'text-red-600' },
+    cancelled: { badge: 'bg-gray-100 text-gray-800', text: 'text-gray-600' },
+    completed: { badge: 'bg-blue-100 text-blue-800', text: 'text-blue-600' }
+};
+
 const koreanDayNames = ["일", "월", "화", "수", "목", "금", "토"];
 
 const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
 
-  const approvedBookings = bookings.filter(b => b.status === 'approved');
-  
+  const allBookings = bookings;
+
   const expandedBookings = useMemo(() => {
     const expanded: ExpandedBooking[] = [];
-    approvedBookings.forEach(booking => {
+    allBookings.forEach(booking => {
         const bookingStart = new Date(booking.startDate + 'T00:00:00');
         const bookingEnd = new Date(booking.endDate + 'T00:00:00');
         for (let d = new Date(bookingStart); d <= bookingEnd; d.setDate(d.getDate() + 1)) {
@@ -45,7 +61,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings }) => {
         }
     });
     return expanded;
-  }, [approvedBookings]);
+  }, [allBookings]);
 
   const changeDate = (amount: number) => {
     const newDate = new Date(currentDate);
@@ -94,9 +110,15 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings }) => {
               <div className="mt-1 space-y-1 overflow-y-auto">
                 {d.bookingsForDay.map(booking => {
                    const colors = categoryColors[booking.category] || categoryColors.personal;
+                   const statusColor = statusColors[booking.status];
                    return (
-                    <div key={`${booking.id}-${booking.date}`} className={`${colors.bg} ${colors.text} ${colors.border} text-xs rounded p-1.5 cursor-pointer`} title={`[예약 상세]\n- 종류: ${categoryMap[booking.category]}${booking.organization ? `\n- 기관: ${booking.organization}`: ''}\n- 목적: ${booking.purpose}\n- 시간: ${booking.startTime} - ${booking.endTime}\n- 신청자: ${booking.userName}`}>
-                      <p className="font-semibold truncate">{booking.purpose}</p>
+                    <div key={`${booking.id}-${booking.date}`} className={`${colors.bg} ${colors.text} ${colors.border} text-xs rounded p-1.5 cursor-pointer`} title={`[예약 상세]\n- 종류: ${categoryMap[booking.category]}\n- 상태: ${statusMap[booking.status]}${booking.organization ? `\n- 기관: ${booking.organization}`: ''}\n- 목적: ${booking.purpose}\n- 시간: ${booking.startTime} - ${booking.endTime}\n- 신청자: ${booking.userName}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-semibold truncate flex-1">{booking.purpose}</p>
+                        <span className={`px-1.5 py-0.5 text-xs rounded-full ${statusColor.badge} ml-1`}>
+                          {statusMap[booking.status]}
+                        </span>
+                      </div>
                       <p className="truncate">{booking.startTime}-{booking.endTime}</p>
                     </div>
                   );
@@ -133,9 +155,15 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ bookings }) => {
                                 const top = (start[0] * 60 + start[1]) / 60 * 3; // 3rem per hour
                                 const height = ((end[0] * 60 + end[1]) - (start[0] * 60 + start[1])) / 60 * 3;
                                 const colors = categoryColors[booking.category];
+                                const statusColor = statusColors[booking.status];
                                 return (
-                                    <div key={booking.id} style={{ top: `calc(3rem + ${top}rem)`, height: `${height}rem`}} className={`absolute left-1 right-1 ${colors.bg} ${colors.text} ${colors.border} p-2 rounded-lg text-xs overflow-hidden`} title={`[예약 상세]\n- 종류: ${categoryMap[booking.category]}\n- 목적: ${booking.purpose}\n- 시간: ${booking.startTime} - ${booking.endTime}\n- 신청자: ${booking.userName}`}>
-                                        <p className="font-bold">{booking.purpose}</p>
+                                    <div key={booking.id} style={{ top: `calc(3rem + ${top}rem)`, height: `${height}rem`}} className={`absolute left-1 right-1 ${colors.bg} ${colors.text} ${colors.border} p-2 rounded-lg text-xs overflow-hidden`} title={`[예약 상세]\n- 종류: ${categoryMap[booking.category]}\n- 상태: ${statusMap[booking.status]}\n- 목적: ${booking.purpose}\n- 시간: ${booking.startTime} - ${booking.endTime}\n- 신청자: ${booking.userName}`}>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="font-bold truncate flex-1">{booking.purpose}</p>
+                                            <span className={`px-1 py-0.5 text-xs rounded ${statusColor.badge} ml-1`}>
+                                                {statusMap[booking.status]}
+                                            </span>
+                                        </div>
                                         <p>{booking.startTime}-{booking.endTime}</p>
                                     </div>
                                 )

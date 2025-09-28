@@ -45,8 +45,15 @@ const DashboardCalendar: React.FC<DashboardCalendarProps> = ({ bookings, program
 
   const calendarEvents = useMemo(() => {
     const events: CalendarEvent[] = [];
-    
-    bookings.filter(b => b.status === 'approved').forEach(booking => {
+    const approvedBookings = bookings.filter(b => b.status === 'approved')
+
+    console.log('📅 DashboardCalendar 업데이트:', {
+      totalBookings: bookings.length,
+      approvedBookings: approvedBookings.length,
+      approvedList: approvedBookings.map(b => ({ id: b.id, purpose: b.purpose, userName: b.userName }))
+    })
+
+    approvedBookings.forEach(booking => {
         const bookingStart = new Date(booking.startDate + 'T00:00:00');
         const bookingEnd = new Date(booking.endDate + 'T00:00:00');
         for (let d = new Date(bookingStart); d <= bookingEnd; d.setDate(d.getDate() + 1)) {

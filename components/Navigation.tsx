@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { User, ActiveTab } from '@/types'
 import { Home, Calendar, BookOpen, Settings, Users, LogOut, Briefcase, Menu, X } from 'lucide-react'
-import { PushNotificationButton } from './PushNotificationButton'
 
 interface NavigationProps {
   currentUser: User
@@ -104,14 +103,13 @@ const Navigation: React.FC<NavigationProps> = ({ currentUser, activeTab, setActi
           </button>
 
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 origin-top-right animate-on-load" style={{ animationName: 'fadeInUp', animationDuration: '0.2s' }}>
+            <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 origin-top-right animate-on-load z-50" style={{ animationName: 'fadeInUp', animationDuration: '0.2s' }}>
               <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
                 <div className="px-4 py-2 text-sm text-gray-700 border-b">
                   <p className="font-semibold">{currentUser.name}</p>
                   <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
                 </div>
                 <div className="py-1">
-                  <PushNotificationButton />
                   <button onClick={onLogout} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center" role="menuitem">
                     <LogOut className="w-4 h-4 mr-2" />
                     로그아웃 / Logout

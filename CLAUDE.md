@@ -383,6 +383,47 @@ import { functions } from '@/utils/firebase-functions'
 
 **Affected Files**: AdminSection.tsx, BookingSection.tsx, ProgramSection.tsx - ALL must use consistent import path.
 
+### Firebase Functions Error Handling Rules
+**PREVENT CORRUPTED ERROR MESSAGES AND ENCODING ISSUES**
+
+#### Booking Submission Error Pattern (BookingSection.tsx):
+```typescript
+// ✅ CORRECT - Safe error message handling
+} catch (functionError: any) {
+  console.error('Firebase Function 호출 실패:', functionError)
+
+  // 안전한 에러 메시지 처리 (인코딩 오류 방지)
+  let errorMessage = '서버 오류가 발생했습니다.'
+  try {
+    if (functionError?.message && typeof functionError.message === 'string') {
+      errorMessage = functionError.message
+    } else if (functionError?.code) {
+      errorMessage = `오류 코드: ${functionError.code}`
+    }
+  } catch (e) {
+    console.warn('에러 메시지 파싱 실패:', e)
+  }
+
+  showNotification(`대관 신청 실패: ${errorMessage}`, 'error')
+}
+
+// ❌ WRONG - Direct error concatenation causes corruption
+} catch (functionError: any) {
+  showNotification(`대관 신청 실패: ${functionError.message}`, 'error') // Can cause garbled text
+}
+```
+
+#### Error Message Corruption Prevention:
+1. **Always wrap error message extraction in try-catch**
+2. **Check if error.message is a valid string before using**
+3. **Provide fallback error messages for unknown errors**
+4. **Never directly concatenate error objects without validation**
+
+#### Common Error Symptoms:
+- **Garbled text**: "캡쳐 2갤럭 이???????른렘 ?"
+- **Root Cause**: Direct error object concatenation or encoding issues
+- **Solution**: Use safe error message extraction pattern above
+
 ### Admin-Created User Authentication Rules
 **NEVER SEND EMAIL VERIFICATION TO ADMIN-CREATED USERS**
 
@@ -420,6 +461,8 @@ Current test accounts (must be synchronized):
 - `joonake@naver.com`
 - `uu@naver.com`
 - `kan@naver.com`
+- `kun6@naver.com`
+- `testuser964419@gmail.com` (비밀번호: 964419Kun!)
 
 **Critical Locations to Update:**
 1. `use-auth.ts:login()` - General user login
@@ -485,7 +528,7 @@ import { functions } from '@/utils/firebase-functions' // Some components
 import { functions } from '@/firebase'               // Other components
 
 // ❌ Missing test account in one function but not the other
-const isTestAccount = email === 'admin@flexspace.test' // Missing kan@naver.com
+const isTestAccount = email === 'admin@flexspace.test' // Missing kun6@naver.com
 
 // ❌ Sending email verification to admin-created users
 if (adminCreated) {
@@ -496,4 +539,143 @@ if (adminCreated) {
 await setDoc(doc(db, 'users', uid), {
   name, email, role // Missing: adminCreated: true
 })
+
+// ❌ Direct error object concatenation (causes corrupted text)
+showNotification(`Error: ${error.message}`, 'error') // Can show garbled text
+
+// ❌ Using different Firebase instances for same operations
+const functionsA = getFunctions(appA)
+const functionsB = getFunctions(appB) // Creates conflicts
+```
+
+### Critical Error Prevention Checklist
+**BEFORE IMPLEMENTING ANY Firebase Function CALLS:**
+
+1. ✅ **Import Check**: `import { functions } from '@/firebase'` (not @/utils/firebase-functions)
+2. ✅ **Error Handling**: Wrap error.message extraction in try-catch
+3. ✅ **Test Account List**: Add new test emails to BOTH login() and adminLogin()
+4. ✅ **Type Safety**: Use safe string validation for error messages
+5. ✅ **Fallback Messages**: Always provide default error message
+
+## CRITICAL FIRESTORE SECURITY RULES & DATA ACCESS PATTERNS
+
+### Firebase Security Rules Configuration
+**NEVER MODIFY THESE RULES WITHOUT UNDERSTANDING THE IMPACT**
+
+#### Current Working Configuration (firestore.rules):
+```javascript
+// ✅ CORRECT - Allows collection queries while maintaining security
+match /users/{userId} {
+  allow read: if request.auth != null;  // All authenticated users can read user list
+  allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+}
+
+match /bookings/{bookingId} {
+  allow read: if request.auth != null;  // All authenticated users can read all bookings
+  allow create: if request.auth != null && isOwner(request.resource.data.userId);
+  allow update: if request.auth != null && (isAdmin() || (isOwner(resource.data.userId) && isCancelling()));
+  allow delete: if isAdmin();
+}
+
+match /program_applications/{applicationId} {
+  allow read: if request.auth != null;  // All authenticated users can read all applications
+  allow create: if request.auth != null && isOwner(request.resource.data.userId);
+  allow update, delete: if isAdmin();
+}
+```
+
+#### 🚨 DANGEROUS PATTERNS TO AVOID:
+```javascript
+// ❌ WRONG - Blocks collection-level queries
+allow read: if request.auth != null && (isOwner(resource.data.userId) || isAdmin());
+
+// ❌ WRONG - Causes "Missing or insufficient permissions" errors
+allow read: if request.auth.uid == userId;  // Only for individual documents
+```
+
+#### Why These Rules Work:
+1. **Collection Queries**: Frontend needs to read entire collections for filtering
+2. **Client-Side Filtering**: Security enforced at application level with userId filtering
+3. **Write Protection**: Still enforced - users can only create/modify their own data
+4. **Admin Override**: Administrators can manage all data
+
+### Data Filtering Patterns
+**ESSENTIAL PATTERNS FOR COMPONENT FILTERING**
+
+#### Safe Filtering Logic (BookingSection.tsx):
+```typescript
+// ✅ CORRECT - Multiple fallback matching strategies
+const userIdMatch = booking.userId === currentUser.id ||
+                   booking.userEmail === currentUser.email;
+
+// ✅ CORRECT - Handle undefined userId gracefully
+const activeBookings = useMemo(() => bookings.filter(b => {
+  const userIdMatch = b.userId === currentUser.id || b.userEmail === currentUser.email;
+  return userIdMatch && b.status !== 'completed';
+}), [bookings, currentUser.id, currentUser.email]);
+```
+
+#### 🚨 PROBLEMATIC PATTERNS TO AVOID:
+```typescript
+// ❌ WRONG - Fails if userId is undefined
+b.userId === currentUser.id
+
+// ❌ WRONG - Missing dependency in useMemo
+}, [bookings, currentUser.id]); // Missing currentUser.email
+```
+
+### Data Model Requirements
+**CRITICAL: userId MUST BE REQUIRED FIELD**
+
+#### Booking Interface (types.ts):
+```typescript
+export interface Booking {
+  id: string
+  userId: string          // ✅ REQUIRED FIELD - Never optional
+  userName?: string       // Optional for display
+  userEmail?: string      // Optional backup for filtering
+  // ... other fields
+}
+```
+
+#### 🚨 NEVER DO THIS:
+```typescript
+userId?: string  // ❌ Optional userId causes filtering failures
+```
+
+### Error Prevention Checklist
+**BEFORE MODIFYING SECURITY RULES OR FILTERING LOGIC:**
+
+1. ✅ **Collection Access**: Can authenticated users query the entire collection?
+2. ✅ **Client Filtering**: Does the component filter by userId/userEmail?
+3. ✅ **Required Fields**: Is userId marked as required in TypeScript interfaces?
+4. ✅ **Fallback Matching**: Does filtering handle missing userId gracefully?
+5. ✅ **Dependencies**: Are all filtering dependencies included in useMemo/useCallback?
+
+### Common Error Symptoms & Solutions
+
+#### "Missing or insufficient permissions" Error:
+- **Cause**: Security rules block collection-level queries
+- **Solution**: Use `allow read: if request.auth != null` for collection rules
+- **Test**: Check Firebase Console → Firestore → Rules
+
+#### "Data not showing despite existing in Firebase":
+- **Cause**: Strict userId filtering with undefined values
+- **Solution**: Add fallback to userEmail matching
+- **Test**: Add console.log in filtering logic
+
+#### "Multiple popup notifications":
+- **Cause**: Nested try-catch blocks with multiple notification calls
+- **Solution**: Single notification at final result level only
+- **Test**: Check BookingSection.tsx handleSubmit function
+
+### Deployment Commands
+**NEVER FORGET TO DEPLOY RULE CHANGES:**
+
+```bash
+# Deploy security rules to Firebase
+firebase deploy --only firestore:rules
+
+# Verify deployment
+firebase firestore:rules:get
 ```

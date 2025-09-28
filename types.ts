@@ -28,7 +28,7 @@ export type BookingCategory = 'class' | 'event' | 'club' | 'personal'
 
 export interface Booking {
   id: string
-  userId?: string
+  userId: string          // REQUIRED: 사용자 필터링을 위해 필수 필드로 변경
   userName?: string
   userEmail?: string
   facilityId: string
@@ -125,4 +125,13 @@ export const COLLECTIONS = {
   NOTIFICATIONS: 'notifications',
   SYSTEM_CONFIG: 'system_config',
 } as const
+
+// Window 객체 확장 (중복 방지를 위한 전역 변수)
+declare global {
+  interface Window {
+    lastBookingSubmit?: number
+    lastBookingSubmits?: { [key: string]: number }
+    lastNotifications?: { [key: string]: number }
+  }
+}
 
