@@ -28,6 +28,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.example
 
 # vercel
 .vercel
@@ -69,6 +70,7 @@ Thumbs.db
 # 환경 변수 파일들 제외
 .env
 .env.local
+.env.example
 .env.production
 functions/.env
 functions/.env.local

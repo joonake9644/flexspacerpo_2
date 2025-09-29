@@ -13,6 +13,17 @@ const initEmailJS = () => {
 // EmailJS 초기화 실행
 initEmailJS();
 
+// UTF-8 텍스트 안전 처리를 위한 헬퍼 함수
+const safeText = (text: string): string => {
+  try {
+    // encodeURIComponent 사용하지 않고 안전한 텍스트만 반환
+    return text && typeof text === 'string' ? text : '';
+  } catch (error) {
+    console.warn('텍스트 처리 실패, 빈 문자열 사용:', error);
+    return '';
+  }
+};
+
 // 이메일 전송을 위한 인터페이스
 interface EmailTemplateParams {
   to_name: string;
@@ -46,17 +57,19 @@ export const sendBookingApplicationEmail = async (params: {
     }
 
     const templateParams: EmailTemplateParams = {
-      to_name: params.userName,
+      to_name: safeText(params.userName),
       from_name: 'FlexSpace Pro',
       user_email: params.userEmail,
-      facility_name: params.facilityName,
-      booking_date: params.bookingDate,
-      booking_time: params.bookingTime,
-      purpose: params.purpose,
-      status: '신청 완료'
+      facility_name: safeText(params.facilityName),
+      booking_date: safeText(params.bookingDate),
+      booking_time: safeText(params.bookingTime),
+      purpose: safeText(params.purpose),
+      status: safeText('신청 완료')
     };
 
-    const response = await emailjs.send(serviceId, templateId, templateParams);
+    const response = await emailjs.send(serviceId, templateId, templateParams, {
+      'Content-Type': 'application/json; charset=utf-8'
+    });
 
     console.log('✅ 대관 신청 확인 이메일 전송 성공:', response);
     return {
@@ -95,18 +108,20 @@ export const sendBookingStatusEmail = async (params: {
     const statusText = params.status === 'approved' ? '승인' : '거부';
 
     const templateParams: EmailTemplateParams = {
-      to_name: params.userName,
+      to_name: safeText(params.userName),
       from_name: 'FlexSpace Pro',
       user_email: params.userEmail,
-      facility_name: params.facilityName,
-      booking_date: params.bookingDate,
-      booking_time: params.bookingTime,
-      purpose: params.purpose,
-      status: statusText,
-      rejection_reason: params.rejectionReason || ''
+      facility_name: safeText(params.facilityName),
+      booking_date: safeText(params.bookingDate),
+      booking_time: safeText(params.bookingTime),
+      purpose: safeText(params.purpose),
+      status: safeText(statusText),
+      rejection_reason: safeText(params.rejectionReason || '')
     };
 
-    const response = await emailjs.send(serviceId, templateId, templateParams);
+    const response = await emailjs.send(serviceId, templateId, templateParams, {
+      'Content-Type': 'application/json; charset=utf-8'
+    });
 
     console.log(`✅ 대관 ${statusText} 이메일 전송 성공:`, response);
     return {
@@ -138,14 +153,16 @@ export const sendProgramApplicationEmail = async (params: {
     }
 
     const templateParams: EmailTemplateParams = {
-      to_name: params.userName,
+      to_name: safeText(params.userName),
       from_name: 'FlexSpace Pro',
       user_email: params.userEmail,
-      program_title: params.programTitle,
-      status: '신청 완료'
+      program_title: safeText(params.programTitle),
+      status: safeText('신청 완료')
     };
 
-    const response = await emailjs.send(serviceId, templateId, templateParams);
+    const response = await emailjs.send(serviceId, templateId, templateParams, {
+      'Content-Type': 'application/json; charset=utf-8'
+    });
 
     console.log('✅ 프로그램 신청 확인 이메일 전송 성공:', response);
     return {
@@ -181,15 +198,17 @@ export const sendProgramStatusEmail = async (params: {
     const statusText = params.status === 'approved' ? '승인' : '거부';
 
     const templateParams: EmailTemplateParams = {
-      to_name: params.userName,
+      to_name: safeText(params.userName),
       from_name: 'FlexSpace Pro',
       user_email: params.userEmail,
-      program_title: params.programTitle,
-      status: statusText,
-      admin_notes: params.adminNotes || ''
+      program_title: safeText(params.programTitle),
+      status: safeText(statusText),
+      admin_notes: safeText(params.adminNotes || '')
     };
 
-    const response = await emailjs.send(serviceId, templateId, templateParams);
+    const response = await emailjs.send(serviceId, templateId, templateParams, {
+      'Content-Type': 'application/json; charset=utf-8'
+    });
 
     console.log(`✅ 프로그램 ${statusText} 이메일 전송 성공:`, response);
     return {

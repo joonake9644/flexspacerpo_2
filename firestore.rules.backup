@@ -1,0 +1,94 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 사용자(users)
+    // 인증된 사용자는 모든 사용자 목록을 읽을 수 있고(관리자 기능 위해), 본인 또는 관리자만 수정 가능
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    // 시설(facilities)
+    // 인증된 사용자는 누구나 시설 정보를 읽을 수 있습니다.
+    match /facilities/{facilityId} {
+      allow read: if request.auth != null;
+      // 관리자만 시설 정보를 생성, 수정, 삭제할 수 있습니다.
+      allow write: if isAdmin();
+    }
+
+    // 프로그램(programs)
+    // 인증된 사용자는 누구나 프로그램 정보를 읽을 수 있습니다.
+    match /programs/{programId} {
+      allow read: if request.auth != null;
+      // 관리자만 프로그램 정보를 생성, 수정, 삭제할 수 있습니다.
+      allow write: if isAdmin();
+    }
+
+    // 예약(bookings)
+    match /bookings/{bookingId} {
+      // 읽기: 인증된 사용자는 모든 예약을 읽을 수 있음 (클라이언트에서 필터링)
+      allow read: if request.auth != null;
+
+      // 생성: 인증된 사용자가 자신의 이름으로만 예약 생성 가능
+      allow create: if request.auth != null && isOwner(request.resource.data.userId);
+
+      // 수정: 관리자는 모든 필드를 수정할 수 있고, 사용자는 'status'를 'cancelled'로만 변경 가능
+      allow update: if request.auth != null &&
+                    (isAdmin() || (isOwner(resource.data.userId) && isCancelling()));
+
+      // 삭제: 관리자만 삭제 가능
+      allow delete: if isAdmin();
+    }
+
+    // 프로그램 신청(applications) - 컬렉션명 통일
+    match /applications/{applicationId} {
+      // 읽기: 인증된 사용자는 모든 신청을 읽을 수 있음 (클라이언트에서 필터링)
+      allow read: if request.auth != null;
+
+      // 생성: 인증된 사용자가 자신의 이름으로만 신청 가능
+      allow create: if request.auth != null && isOwner(request.resource.data.userId);
+
+      // 수정/삭제: 관리자만 가능
+      allow update, delete: if isAdmin();
+    }
+
+    // 프로그램 신청(program_applications) - 기존 컬렉션명 호환성
+    match /program_applications/{applicationId} {
+      // 읽기: 인증된 사용자는 모든 신청을 읽을 수 있음 (클라이언트에서 필터링)
+      allow read: if request.auth != null;
+
+      // 생성: 인증된 사용자가 자신의 이름으로만 신청 가능
+      allow create: if request.auth != null && isOwner(request.resource.data.userId);
+
+      // 수정/삭제: 관리자만 가능
+      allow update, delete: if isAdmin();
+    }
+
+    // 운동 종목(sportTypes) - 관리자 전용
+    match /sportTypes/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // --- 함수 ---
+
+    // 요청자가 관리자인지 확인하는 함수
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // 요청자가 리소스의 소유자인지 확인하는 함수
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // 사용자가 예약을 취소하는 작업인지 확인하는 함수
+    function isCancelling() {
+      // status 필드만 변경되고, 그 값이 'cancelled'인지 확인
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+             request.resource.data.status == 'cancelled';
+    }
+  }
+}

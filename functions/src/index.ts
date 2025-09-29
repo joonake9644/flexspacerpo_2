@@ -1,4 +1,4 @@
-﻿// ?좉린??愿怨?遺꾩꽍 諛?由ы뙥?좊쭅???듯빐 ?덉젙?붾맂 肄붾뱶
+// 통합 관리 분석 및 리빙랩 솔루션을 위해 정리된 코드 - 슬랙 알림 기능 포함
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as Joi from 'joi';
@@ -6,16 +6,26 @@ import * as nodemailer from 'nodemailer';
 import * as webpush from 'web-push';
 
 import { Booking, Facility, CreateBookingData, User, ProgramApplication, CreateProgramApplicationData } from './types';
-import { sendBookingApplicationSlackAlert, sendBookingStatusSlackAlert, sendProgramApplicationSlackAlert, sendSlackWithRetry } from './notification-utils';
+import { sendBookingApplicationSlackAlert, sendBookingStatusSlackAlert, sendProgramApplicationSlackAlert, sendProgramStatusSlackAlert, sendSlackWithRetry } from './notification-utils';
 // NOTE: Removed external app util imports for Functions build isolation
 
-// Firebase Admin SDK 珥덇린??(??踰덈쭔 ?ㅽ뻾?섎룄濡?蹂댁옣)
+// 관리자 이메일 목록 (보안 규칙과 동일)
+const ADMIN_EMAILS = [
+  'admin@flexspace.test',
+  'flexadmin@test.com',
+  'joonake@naver.com',
+  'uu@naver.com',
+  'kan@naver.com',
+  'kun6@naver.com'
+]
+
+// Firebase Admin SDK 초기화(한번만 실행되도록 보장)
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
 
-// --- Joi ?ㅽ궎留??뺤쓽 ---
+// --- Joi 스키마 정의 ---
 const bookingSchema = Joi.object({
   facilityId: Joi.string().required(),
   startDate: Joi.string().isoDate().required(),
@@ -31,17 +41,17 @@ const bookingSchema = Joi.object({
 // --- Cloud Functions ---
 
 /**
- * ?덈줈???쒖꽕 ?愿 ?덉빟???앹꽦?⑸땲??
+ * 새로운 시설 대관 신청을 생성합니다
  */
 export const createBooking = functions.https.onCall(async (data: CreateBookingData, context) => {
-  // 1. ?몄쬆 ?뺤씤
+  // 1. 인증 확인
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', '?몄쬆?섏? ?딆? ?ъ슜?먯엯?덈떎.');
+    throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
   }
   const userId = context.auth.uid;
   const userDoc = await db.collection('users').doc(userId).get();
   if (!userDoc.exists) {
-    throw new functions.https.HttpsError('not-found', '?ъ슜???뺣낫瑜?李얠쓣 ???놁뒿?덈떎.');
+    throw new functions.https.HttpsError('not-found', '사용자 정보를 찾을 수 없습니다.');
   }
   const user = userDoc.data() as User;
 
@@ -56,7 +66,7 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
   const endISO = `${endDate}T${endTime}`;
 
   if (startISO >= endISO) {
-    throw new functions.https.HttpsError('invalid-argument', '?쒖옉 ?쒓컙? 醫낅즺 ?쒓컙蹂대떎 鍮⑤씪???⑸땲??');
+    throw new functions.https.HttpsError('invalid-argument', '시작 시간이 종료 시간보다 빨라야 합니다');
   }
 
   const facilityRef = db.collection('facilities').doc(facilityId);
@@ -66,11 +76,11 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
     const newBookingId = await db.runTransaction(async (transaction) => {
       const facilityDoc = await transaction.get(facilityRef);
       if (!facilityDoc.exists) {
-        throw new functions.https.HttpsError('not-found', '議댁옱?섏? ?딅뒗 ?쒖꽕?낅땲??');
+        throw new functions.https.HttpsError('not-found', '존재하지 않는 시설입니다');
       }
       const facility = facilityDoc.data() as Facility;
 
-      // Date 媛앹껜 ?앹꽦 ?놁씠 ISO 臾몄옄?대줈 吏곸젒 荑쇰━
+      // Date 객체 생성 없이 ISO 문자열로 직접 쿼리
       // 동일 사용자의 중복 신청 방지 (최근 10초 내)
       const recentUserBookings = await transaction.get(
         bookingsRef
@@ -95,28 +105,28 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
         .where('startTime', '<', endISO);
 
       const snapshot = await transaction.get(conflictQuery);
-      
+
       let totalParticipantsInOverlap = 0;
       for (const doc of snapshot.docs) {
         const existingBooking = doc.data() as Booking;
         const existingStart = `${existingBooking.startDate}T${existingBooking.startTime}`;
         const existingEnd = `${existingBooking.endDate}T${existingBooking.endTime}`;
 
-        // 踰꾪띁 ?쒓컙??怨좊젮??鍮꾧탳媛 ?꾩슂?섎떎硫? ?ш린??遺??⑥쐞濡?蹂?섑븯??鍮꾧탳?댁빞 ??        // ?꾩옱 濡쒖쭅?먯꽌??踰꾪띁 ?쒓컙 鍮꾧탳瑜??앸왂?섍퀬 ?쒓컙?留?鍮꾧탳
+        // 버퍼 시간을 고려한 비교가 필요하다면 여기서 부가적인 위조로 변경하지 비교해야 함        // 현재 로직에서는 버퍼 시간 비교를 생략하고 시간만 비교
         if (startISO < existingEnd && endISO > existingStart) {
           if (facility.capacity === 1) {
-            throw new functions.https.HttpsError('failed-precondition', '?대떦 ?쒓컙???대? ?ㅻⅨ ?덉빟??議댁옱?섏뿬 ?좎껌?????놁뒿?덈떎.');
+            throw new functions.https.HttpsError('failed-precondition', '해당 시간에는 이미 다른 신청이 존재하여 승인할 수 없습니다.');
           }
           totalParticipantsInOverlap += existingBooking.numberOfParticipants;
         }
       }
 
       if (facility.capacity > 1 && (totalParticipantsInOverlap + numberOfParticipants > facility.capacity)) {
-        throw new functions.https.HttpsError('resource-exhausted', `?덉빟 媛?ν븳 ?몄썝??珥덇낵?덉뒿?덈떎.`);
+        throw new functions.https.HttpsError('resource-exhausted', `신청 가능한 인원을 초과했습니다.`);
       }
 
       const newBookingRef = db.collection('bookings').doc();
-      // Omit<Booking, 'id'> ??낆뿉 留욊쾶 紐⑤뱺 ?꾩닔 ?꾨뱶瑜?梨꾩썙以띾땲??
+      // Omit<Booking, 'id'> 타입에 맞게 모든 필수 필드를 채워줍니다
       const newBookingData: Omit<Booking, 'id'> = {
         ...value,
         userId,
@@ -156,20 +166,20 @@ export const createBooking = functions.https.onCall(async (data: CreateBookingDa
     if (err instanceof functions.https.HttpsError) {
       throw err;
     }
-    throw new functions.https.HttpsError('internal', '?덉빟 ?앹꽦 以??????녿뒗 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.');
+    throw new functions.https.HttpsError('internal', '신청 생성 중 예상치 못한 오류가 발생했습니다.');
   }
 });
 
 /**
- * ?꾨줈洹몃옩???좎껌?⑸땲?? (湲곕낯 援ъ“ ?꾩꽦)
+ * 프로그램 신청을 승인합니다 (기본 구조 유지)
  */
 export const createProgramApplication = functions.https.onCall(async (data: CreateProgramApplicationData, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', '?몄쬆?섏? ?딆? ?ъ슜?먯엯?덈떎.');
+    throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
   }
   const { programId } = data;
   if (!programId) {
-    throw new functions.https.HttpsError('invalid-argument', '?꾨줈洹몃옩 ID媛 ?꾩슂?⑸땲??');
+    throw new functions.https.HttpsError('invalid-argument', '프로그램 ID가 필요합니다');
   }
 
   const newApplicationRef = db.collection('program_applications').doc();
@@ -212,28 +222,28 @@ const isUserAdmin = async (uid: string): Promise<boolean> => {
 };
 
 /**
- * ?덉빟 ?곹깭瑜?蹂寃쏀빀?덈떎. (愿由ъ옄 ?꾩슜)
+ * 신청 상태를 변경합니다. (관리자 전용)
  */
 export const updateReservationStatus = functions.https.onCall(async (data, context) => {
-  // 1. ?몄쬆 諛?愿由ъ옄 沅뚰븳 ?뺤씤
+  // 1. 인증 및 관리자 권한 확인
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', '?몄쬆?섏? ?딆? ?ъ슜?먯엯?덈떎.');
+    throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
   }
   const isAdmin = await isUserAdmin(context.auth.uid);
   if (!isAdmin) {
-    throw new functions.https.HttpsError('permission-denied', '愿由ъ옄 沅뚰븳???꾩슂?⑸땲??');
+    throw new functions.https.HttpsError('permission-denied', '관리자 권한이 필요합니다');
   }
 
   // 2. 입력 데이터 유효성 검증
   const { reservationId, status, adminNotes } = data;
   if (!reservationId || !status) {
-    throw new functions.https.HttpsError('invalid-argument', '?덉빟 ID? ?곹깭???꾩닔?낅땲??');
+    throw new functions.https.HttpsError('invalid-argument', '신청 ID와 상태가 필수입니다');
   }
   if (!['approved', 'rejected', 'completed'].includes(status)) {
-    throw new functions.https.HttpsError('invalid-argument', '?좏슚?섏? ?딆? ?곹깭 媛믪엯?덈떎.');
+    throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 상태 값입니다');
   }
 
-  // 3. ?덉빟 臾몄꽌 ?낅뜲?댄듃
+  // 3. 신청 문서 업데이트
   try {
     const reservationRef = db.collection('bookings').doc(reservationId);
     const updateData: { status: string; rejectionReason?: string; updatedAt?: any } = {
@@ -243,13 +253,13 @@ export const updateReservationStatus = functions.https.onCall(async (data, conte
     if (status === 'rejected' && adminNotes) {
       updateData.rejectionReason = adminNotes;
     }
-    
+
     await reservationRef.update(updateData);
 
-    return { success: true, message: '?덉빟 ?곹깭媛 ?깃났?곸쑝濡??낅뜲?댄듃?섏뿀?듬땲??' };
+    return { success: true, message: '신청 상태가 성공적으로 업데이트되었습니다' };
   } catch (error) {
     console.error('Reservation status update failed:', error);
-    throw new functions.https.HttpsError('internal', '?덉빟 ?곹깭 ?낅뜲?댄듃 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.');
+    throw new functions.https.HttpsError('internal', '신청 상태 업데이트 중 오류가 발생했습니다.');
   }
 });
 
@@ -258,22 +268,22 @@ export const updateReservationStatus = functions.https.onCall(async (data, conte
  */
 export const subscribeToPush = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', '?몄쬆?섏? ?딆? ?ъ슜?먯엯?덈떎.');
+    throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
   }
 
   const { subscription } = data;
   if (!subscription) {
-    throw new functions.https.HttpsError('invalid-argument', '援щ룆 媛앹껜媛 ?꾩슂?⑸땲??');
+    throw new functions.https.HttpsError('invalid-argument', '구독 객체가 필요합니다');
   }
 
   try {
     const userRef = db.collection('users').doc(context.auth.uid);
     // Use merge: true to avoid overwriting the whole document
     await userRef.set({ pushSubscription: subscription }, { merge: true });
-    return { success: true, message: '?몄떆 ?뚮┝??援щ룆?섏뿀?듬땲??' };
+    return { success: true, message: '실시 알림 구독했습니다' };
   } catch (error) {
     console.error('Failed to save push subscription:', error);
-    throw new functions.https.HttpsError('internal', '援щ룆 ?뺣낫 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.');
+    throw new functions.https.HttpsError('internal', '구독 정보 저장에 실패했습니다.');
   }
 });
 
@@ -390,7 +400,7 @@ export const createUserByAdmin = functions.https.onCall(async (data, context) =>
 });
 
 
-// --- ?대찓??諛??몄떆 ?뚮┝ 愿??---
+// --- 이메일 및 실시 알림 관련 ---
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -404,7 +414,7 @@ try {
   const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
   const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
   if (vapidPublicKey && vapidPrivateKey) {
-    // ?⑥닔紐??ㅽ? ?섏젙: setVapIDDetails -> setVapidDetails
+    // 오탈자 수정: setVapIDDetails -> setVapidDetails
     webpush.setVapidDetails(
       'mailto:admin@example.com',
       vapidPublicKey,
@@ -416,7 +426,7 @@ try {
 }
 
 /**
- * ?덉빟 ?곹깭 蹂寃????ъ슜?먯뿉寃??대찓???뚮┝??蹂대깄?덈떎.
+ * 신청 상태 변경시 사용자에게 이메일 알림을 보냅니다.
  */
 export const onBookingStatusChange = functions.firestore
   .document('bookings/{bookingId}')
@@ -438,11 +448,11 @@ export const onBookingStatusChange = functions.firestore
     const mailOptions = {
       from: '"FlexSpace Pro" <noreply@flexspace.pro>',
       to: user.email,
-      subject: `[FlexSpace Pro] ?덉빟 ?곹깭 蹂寃??뚮┝: ${after.purpose}`,
+      subject: `[FlexSpace Pro] 신청 상태 변경 알림: ${after.purpose}`,
       html: `
-        <h1>?덉빟 ?곹깭 蹂寃??뚮┝</h1>
-        <p><strong>${after.purpose}</strong> ?덉빟???곹깭媛 <strong>${before.status}</strong>?먯꽌 <strong>${after.status}</strong>(??濡?蹂寃쎈릺?덉뒿?덈떎.</p>
-        <p>?먯꽭???댁슜? ?깆뿉???뺤씤?댁＜?몄슂.</p>
+        <h1>신청 상태 변경 알림</h1>
+        <p><strong>${after.purpose}</strong> 신청의 상태가 <strong>${before.status}</strong>에서 <strong>${after.status}</strong>로 변경되었습니다.</p>
+        <p>자세한 내용은 사이트에서 확인해주세요.</p>
       `
     };
 
@@ -452,7 +462,7 @@ export const onBookingStatusChange = functions.firestore
     notificationPromises.push(
       transporter.sendMail(mailOptions).then(() => {
         console.log(`Status change email sent to ${user.email}`);
-      }).catch(error => {
+      }).catch((error: any) => {
         console.error('Failed to send email:', error);
       })
     );
@@ -506,7 +516,281 @@ export const onBookingStatusChange = functions.firestore
     return null;
   });
 
+/**
+ * 프로그램 신청 상태 변경시 사용자에게 이메일 및 슬랙 알림을 보냅니다.
+ */
+export const onProgramApplicationStatusChange = functions.firestore
+  .document('program_applications/{applicationId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() as ProgramApplication;
+    const after = change.after.data() as ProgramApplication;
 
+    if (before.status === after.status) {
+      return null;
+    }
 
+    const userDoc = await db.collection('users').doc(after.userId).get();
+    if (!userDoc.exists) {
+      console.error(`User not found: ${after.userId}`);
+      return null;
+    }
+    const user = userDoc.data() as User;
 
+    const mailOptions = {
+      from: '"FlexSpace Pro" <noreply@flexspace.pro>',
+      to: user.email,
+      subject: `[FlexSpace Pro] 프로그램 신청 상태 변경 알림: ${after.programTitle}`,
+      html: `
+        <h1>프로그램 신청 상태 변경 알림</h1>
+        <p><strong>${after.programTitle}</strong> 프로그램 신청의 상태가 <strong>${before.status}</strong>에서 <strong>${after.status}</strong>로 변경되었습니다.</p>
+        <p>자세한 내용은 사이트에서 확인해주세요.</p>
+      `
+    };
 
+    const notificationPromises = [];
+
+    // 1. Email Notification Promise
+    notificationPromises.push(
+      transporter.sendMail(mailOptions).then(() => {
+        console.log(`Program status change email sent to ${user.email}`);
+      }).catch((error: any) => {
+        console.error('Failed to send program status email:', error);
+      })
+    );
+
+    // 2. Web Push Notification Promise
+    if (user.pushSubscription) {
+      const payload = JSON.stringify({
+        title: 'FlexSpace Pro: Program Status Changed',
+        body: 'Program "' + after.programTitle + '" status: ' + after.status,
+        icon: '/icon-192x192.png',
+        data: {
+          url: '/program'
+        }
+      });
+
+      notificationPromises.push(
+        webpush.sendNotification(user.pushSubscription, payload).then(() => {
+          console.log('Program push notification sent successfully.');
+        }).catch(pushError => {
+          console.error('Failed to send program push notification:', pushError);
+          if (pushError.statusCode === 404 || pushError.statusCode === 410) {
+            console.log('Subscription has expired or is no longer valid. Removing...');
+            return db.collection('users').doc(after.userId).update({
+              pushSubscription: admin.firestore.FieldValue.delete()
+            });
+          }
+          return null;
+        })
+      );
+    }
+
+    // 3. Slack Notification Promise
+    notificationPromises.push(
+      (async () => {
+        try {
+          // Slack 알림 전송
+          await sendSlackWithRetry(() => sendProgramStatusSlackAlert(after, user, before.status, after.status));
+          console.log(`Slack notification sent for program status change: ${before.status} -> ${after.status}`);
+        } catch (slackError) {
+          console.error('Failed to send program Slack notification:', slackError);
+        }
+      })()
+    );
+
+    await Promise.all(notificationPromises);
+
+    return null;
+  });
+
+// --- 강화된 보안을 위한 Custom Claims 관리 ---
+
+/**
+ * 관리자 이메일 확인 함수
+ */
+function isAdminEmail(email: string): boolean {
+  return ADMIN_EMAILS.includes(email);
+}
+
+/**
+ * Custom Claims를 통한 관리자 권한 설정
+ * 보안 규칙의 get() 호출 문제를 해결하기 위해 토큰 기반 권한 확인 사용
+ */
+export const setAdminClaims = functions.https.onCall(async (data, context) => {
+  // 1. 인증 확인
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
+  }
+
+  // 2. 관리자 권한 확인 (이메일 기반)
+  const callerEmail = context.auth.token.email;
+  if (!callerEmail || !isAdminEmail(callerEmail)) {
+    throw new functions.https.HttpsError('permission-denied', '관리자만 권한을 설정할 수 있습니다.');
+  }
+
+  const { uid, email, role, admin } = data;
+
+  // 3. 입력 유효성 검증
+  if (!uid || !email) {
+    throw new functions.https.HttpsError('invalid-argument', 'UID와 이메일이 필요합니다.');
+  }
+
+  // 4. 대상 사용자가 관리자 이메일인지 확인
+  if (!isAdminEmail(email)) {
+    throw new functions.https.HttpsError('invalid-argument', '관리자 권한을 부여할 수 없는 이메일입니다.');
+  }
+
+  try {
+    console.log(`관리자 Custom Claims 설정: ${email} (${uid})`);
+
+    // 5. Custom Claims 설정
+    const customClaims = {
+      role: role || 'admin',
+      admin: admin !== undefined ? admin : true,
+      email: email,
+      updatedAt: Date.now()
+    };
+
+    await admin.auth().setCustomUserClaims(uid, customClaims);
+
+    // 6. Firestore 사용자 문서도 업데이트
+    await db.collection('users').doc(uid).update({
+      role: 'admin',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`Custom Claims 설정 완료: ${email}`, customClaims);
+
+    return {
+      success: true,
+      message: `${email}에게 관리자 권한이 설정되었습니다.`,
+      claims: customClaims
+    };
+
+  } catch (error: any) {
+    console.error('Custom Claims 설정 실패:', error);
+    throw new functions.https.HttpsError('internal', `권한 설정 중 오류가 발생했습니다: ${error.message}`);
+  }
+});
+
+/**
+ * 사용자의 관리자 권한 확인 (토큰 기반)
+ * 보안 규칙에서 get() 호출 없이 사용할 수 있는 방식
+ */
+export const checkAdminRole = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    return { isAdmin: false, source: 'none' };
+  }
+
+  const userEmail = context.auth.token.email;
+  const customClaims = context.auth.token;
+
+  // 1. Custom Claims 확인
+  if (customClaims.role === 'admin' || customClaims.admin === true) {
+    return {
+      isAdmin: true,
+      source: 'token',
+      claims: {
+        role: customClaims.role,
+        admin: customClaims.admin
+      }
+    };
+  }
+
+  // 2. 이메일 기반 백업 확인
+  if (userEmail && isAdminEmail(userEmail)) {
+    console.log(`이메일 기반 관리자 확인: ${userEmail}`);
+
+    // Custom Claims가 없는 경우 자동 설정
+    try {
+      await admin.auth().setCustomUserClaims(context.auth.uid, {
+        role: 'admin',
+        admin: true,
+        email: userEmail,
+        autoGranted: true,
+        updatedAt: Date.now()
+      });
+
+      return {
+        isAdmin: true,
+        source: 'email',
+        autoGranted: true
+      };
+    } catch (error: any) {
+      console.error('자동 권한 부여 실패:', error);
+      return {
+        isAdmin: true,
+        source: 'email',
+        error: error.message || 'Unknown error'
+      };
+    }
+  }
+
+  return { isAdmin: false, source: 'none' };
+});
+
+/**
+ * 모든 관리자 계정의 Custom Claims 일괄 설정
+ * 초기 설정이나 마이그레이션 용도
+ */
+export const initializeAdminClaims = functions.https.onCall(async (data, context) => {
+  // 슈퍼 관리자만 실행 가능
+  if (!context.auth || !context.auth.token.email || !['admin@flexspace.test', 'kan@naver.com'].includes(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', '슈퍼 관리자만 실행할 수 있습니다.');
+  }
+
+  const results = [];
+
+  try {
+    console.log('관리자 계정 Custom Claims 일괄 설정 시작...');
+
+    // 모든 관리자 이메일에 대해 처리
+    for (const adminEmail of ADMIN_EMAILS) {
+      try {
+        // 이메일로 사용자 찾기
+        const userRecord = await admin.auth().getUserByEmail(adminEmail);
+
+        // Custom Claims 설정
+        await admin.auth().setCustomUserClaims(userRecord.uid, {
+          role: 'admin',
+          admin: true,
+          email: adminEmail,
+          batchInitialized: true,
+          updatedAt: Date.now()
+        });
+
+        // Firestore 업데이트
+        await db.collection('users').doc(userRecord.uid).update({
+          role: 'admin',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        results.push({
+          email: adminEmail,
+          uid: userRecord.uid,
+          success: true
+        });
+
+        console.log(`관리자 권한 설정 완료: ${adminEmail} (${userRecord.uid})`);
+
+      } catch (userError: any) {
+        console.warn(`사용자 처리 실패: ${adminEmail}`, userError.message);
+        results.push({
+          email: adminEmail,
+          success: false,
+          error: userError.message
+        });
+      }
+    }
+
+    return {
+      success: true,
+      message: `${results.filter(r => r.success).length}/${ADMIN_EMAILS.length} 관리자 계정 설정 완료`,
+      results: results
+    };
+
+  } catch (error: any) {
+    console.error('일괄 권한 설정 실패:', error);
+    throw new functions.https.HttpsError('internal', `일괄 설정 중 오류가 발생했습니다: ${error.message}`);
+  }
+});
