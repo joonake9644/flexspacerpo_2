@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, memo } from 'react'
 // 개발 가이드라인: 사용자별 데이터 필터링 필수 (currentUser.id로 필터링)
-import { User, Booking, Facility, CreateBookingData } from '@/types'
+import { User, Booking, Facility, CreateBookingData, BookingStatus, BookingCategory } from '@/types'
 import { useFirestore } from '../hooks/use-firestore'
 import { useNotification } from '../hooks/use-notification'
 import { httpsCallable } from 'firebase/functions'
@@ -13,10 +13,10 @@ import { db } from '@/firebase'
 const createBookingCallable = httpsCallable(functions, 'createBooking')
 
 // Firebase Function이 없을 때 사용하는 백업 저장 방법
-const fallbackCreateBooking = async (payload: CreateBookingData, bookingId: string, currentUser: User) => {
+const fallbackCreateBooking = async (payload: CreateBookingData & { userName?: string }, bookingId: string, currentUser: User) => {
   const bookingData = {
     userId: currentUser.id,
-    userName: currentUser.name,
+    userName: payload.userName || currentUser.name,
     userEmail: currentUser.email,
     purpose: payload.purpose,
     category: payload.category,
@@ -55,6 +55,7 @@ const StatusBadge: React.FC<{ status: 'approved' | 'pending' | 'rejected' | 'com
 })
 
 const weekDays = ['일', '월', '화', '수', '목', '금', '토']
+const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토']
 
 const formatBookingDate = (b: Booking) => {
   const { startDate, endDate, recurrenceRule } = b
@@ -66,7 +67,7 @@ const formatBookingDate = (b: Booking) => {
   return `${startDate} ~ ${endDate}${recurrenceStr}`
 }
 
-const BookingListItem: React.FC<{ booking: Booking; facilities: any[] }> = memo(({ booking, facilities }) => {
+const BookingListItem: React.FC<{ booking: Booking; facilities: Facility[] }> = memo(({ booking, facilities }) => {
   const facility = facilities.find(f => f.id === booking.facilityId)
   return (
     <div className="p-3 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100">
@@ -74,7 +75,7 @@ const BookingListItem: React.FC<{ booking: Booking; facilities: any[] }> = memo(
         <div>
           <p className="font-medium text-gray-900">{booking.purpose}</p>
           <p className="text-sm text-gray-600">
-            {facility?.name} | {booking.organization ? `${booking.organization} | ` : ''}{formatBookingDate(booking)} {booking.startTime}-{booking.endTime}
+            {booking.userName || '사용자'} | {facility?.name} | {booking.organization ? `${booking.organization} | ` : ''}{formatBookingDate(booking)} {booking.startTime}-{booking.endTime}
           </p>
         </div>
         <StatusBadge status={booking.status} />
@@ -87,7 +88,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
   const { facilities } = useFirestore()
   const { showNotification } = useNotification()
 
-  const [form, setForm] = useState<Partial<CreateBookingData>>({
+  const [form, setForm] = useState<Partial<CreateBookingData & { recurrenceRule?: { days: number[] }; userName?: string }>>({
     purpose: '',
     category: 'personal' as any,
     numberOfParticipants: 1,
@@ -96,28 +97,112 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
     startTime: '09:00',
     endTime: '10:00',
     facilityId: '',
+    recurrenceRule: { days: [] },
+    userName: currentUser.name || '', // 기본값으로 현재 사용자 이름 설정
   })
   const [submitting, setSubmitting] = useState(false)
   const [view, setView] = useState<'list' | 'calendar'>('list')
   const [currentDate, setCurrentDate] = useState(new Date())
 
+  // 검색 및 필터 상태
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'all'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<BookingCategory | 'all'>('all')
+  const [facilityFilter, setFacilityFilter] = useState<string>('all')
+
+  // AdminSection과 동일한 다중일 감지 로직
+  const isMultiDay = useMemo(() => form.startDate !== form.endDate, [form.startDate, form.endDate])
+
   const activeBookings = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+
     // 안전한 사용자 ID 비교 (userId 또는 userEmail로 매칭)
-    const filtered = bookings.filter(b => {
+    const userFiltered = bookings.filter(b => {
       const userIdMatch = b.userId === currentUser.id ||
                          b.userEmail === currentUser.email
-      return userIdMatch && b.status !== 'completed'
+      if (!userIdMatch) return false
+
+      // 완료/취소는 제외
+      if (b.status === 'completed' || b.status === 'cancelled') return false
+
+      // 🔥 자동 만료 처리: 승인된 대관 중 종료일이 지났으면 진행중에서 제외
+      if (b.status === 'approved' && b.endDate < todayStr) {
+        return false
+      }
+
+      return true
     })
 
-    return filtered
-  }, [bookings, currentUser.id, currentUser.email])
+    // 검색 및 필터 적용
+    return userFiltered.filter(b => {
+      // 텍스트 검색 (대관 목적)
+      if (searchTerm && !b.purpose.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false
+      }
 
-  const completedBookings = useMemo(() => bookings.filter(b => {
-    const userIdMatch = b.userId === currentUser.id ||
-                       b.userEmail === currentUser.email
+      // 상태 필터
+      if (statusFilter !== 'all' && b.status !== statusFilter) {
+        return false
+      }
 
-    return userIdMatch && b.status === 'completed'
-  }), [bookings, currentUser.id, currentUser.email])
+      // 분류 필터
+      if (categoryFilter !== 'all' && b.category !== categoryFilter) {
+        return false
+      }
+
+      // 시설 필터
+      if (facilityFilter !== 'all' && b.facilityId !== facilityFilter) {
+        return false
+      }
+
+      return true
+    })
+  }, [bookings, currentUser.id, currentUser.email, searchTerm, statusFilter, categoryFilter, facilityFilter])
+
+  const completedBookings = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+
+    // 안전한 사용자 ID 비교 + 완료된 대관만
+    const userFiltered = bookings.filter(b => {
+      const userIdMatch = b.userId === currentUser.id ||
+                         b.userEmail === currentUser.email
+      if (!userIdMatch) return false
+
+      // 명시적으로 완료된 대관
+      if (b.status === 'completed') return true
+
+      // 🔥 자동 만료 처리: 승인된 대관 중 종료일이 지났으면 완료된 대관으로 분류
+      if (b.status === 'approved' && b.endDate < todayStr) {
+        return true
+      }
+
+      return false
+    })
+
+    // 검색 및 필터 적용
+    return userFiltered.filter(b => {
+      // 텍스트 검색 (대관 목적)
+      if (searchTerm && !b.purpose.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false
+      }
+
+      // 분류 필터 (완료된 대관에는 상태 필터 불필요)
+      if (categoryFilter !== 'all' && b.category !== categoryFilter) {
+        return false
+      }
+
+      // 시설 필터
+      if (facilityFilter !== 'all' && b.facilityId !== facilityFilter) {
+        return false
+      }
+
+      return true
+    })
+  }, [bookings, currentUser.id, currentUser.email, searchTerm, categoryFilter, facilityFilter])
 
   // Calendar helper functions
   const getCalendarDays = useCallback(() => {
@@ -152,11 +237,20 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
       // 날짜 범위 내에 있는지 확인
       if (targetDate >= bookingStart && targetDate <= bookingEnd) {
-        // 반복 예약 규칙 확인 (있는 경우에만)
-        if (booking.recurrenceRule && booking.recurrenceRule.days && booking.recurrenceRule.days.length > 0) {
-          return booking.recurrenceRule.days.includes(targetDate.getDay())
+        // 다중일 대관인 경우 (startDate !== endDate)
+        const isMultiDay = booking.startDate !== booking.endDate
+
+        if (isMultiDay) {
+          // 다중일 대관은 반드시 반복 요일이 설정되어야 함
+          if (booking.recurrenceRule && booking.recurrenceRule.days && booking.recurrenceRule.days.length > 0) {
+            return booking.recurrenceRule.days.includes(targetDate.getDay())
+          }
+          // 다중일 대관인데 반복 요일이 없으면 표시하지 않음
+          return false
+        } else {
+          // 단일일 대관은 그대로 표시
+          return true
         }
-        return true
       }
 
       return false
@@ -196,6 +290,10 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
     try {
       // 유효성 검증
+      if (!form.userName?.trim()) {
+        showNotification('신청자 이름을 입력해주세요.', 'error')
+        return
+      }
       if (!form.purpose?.trim()) {
         showNotification('대관 목적을 입력해주세요.', 'error')
         return
@@ -232,6 +330,12 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
       if (!form.facilityId) {
         showNotification('시설을 선택해주세요.', 'error')
+        return
+      }
+
+      // 반복 일정 유효성 검증
+      if (isMultiDay && (!form.recurrenceRule?.days || form.recurrenceRule.days.length === 0)) {
+        showNotification('다중일 대관의 경우 반복 요일을 선택해주세요.', 'error')
         return
       }
 
@@ -282,8 +386,8 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         return
       }
 
-      // 실제 저장 처리
-      const payload: CreateBookingData = {
+      // 실제 저장 처리 (recurrenceRule 포함)
+      const payload: CreateBookingData & { recurrenceRule?: { days: number[] } } = {
         purpose: form.purpose,
         category: form.category as any,
         numberOfParticipants: form.numberOfParticipants || 1,
@@ -292,6 +396,10 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         endDate: form.endDate,
         startTime: form.startTime,
         endTime: form.endTime,
+        // 다중일이고 반복요일이 선택된 경우에만 포함
+        ...(isMultiDay && form.recurrenceRule?.days && form.recurrenceRule.days.length > 0
+          ? { recurrenceRule: form.recurrenceRule }
+          : {}),
       }
 
       const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -328,7 +436,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         savedBooking = {
           id: result?.data?.bookingId || bookingId,
           userId: currentUser.id,
-          userName: currentUser.name,
+          userName: form.userName || currentUser.name,
           userEmail: currentUser.email,
           ...payload,
           status: 'pending',
@@ -343,7 +451,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
           savedBooking = {
             id: bookingId,
             userId: currentUser.id,
-            userName: currentUser.name,
+            userName: form.userName || currentUser.name,
             userEmail: currentUser.email,
             ...payload,
             status: 'pending',
@@ -366,6 +474,8 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
           startTime: '09:00',
           endTime: '10:00',
           facilityId: '',
+          recurrenceRule: { days: [] },
+          userName: currentUser.name || '', // 초기화할 때도 기본값 설정
         })
 
         // 최종 성공 알림만
@@ -419,12 +529,94 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         </div>
       </div>
 
+      {/* 검색 및 필터 UI */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">검색 및 필터</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 텍스트 검색 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">대관 목적 검색</label>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-200 rounded-lg"
+              placeholder="대관 목적을 입력하세요"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          {/* 상태 필터 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">상태</label>
+            <select
+              className="w-full p-2 border border-gray-200 rounded-lg bg-white"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as BookingStatus | 'all')}
+            >
+              <option value="all">전체</option>
+              <option value="pending">대기중</option>
+              <option value="approved">승인됨</option>
+              <option value="rejected">거절됨</option>
+              <option value="cancelled">취소됨</option>
+            </select>
+          </div>
+
+          {/* 분류 필터 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">분류</label>
+            <select
+              className="w-full p-2 border border-gray-200 rounded-lg bg-white"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as BookingCategory | 'all')}
+            >
+              <option value="all">전체</option>
+              <option value="personal">개인</option>
+              <option value="club">동아리</option>
+              <option value="event">행사</option>
+              <option value="class">수업</option>
+            </select>
+          </div>
+
+          {/* 시설 필터 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">시설</label>
+            <select
+              className="w-full p-2 border border-gray-200 rounded-lg bg-white"
+              value={facilityFilter}
+              onChange={(e) => setFacilityFilter(e.target.value)}
+            >
+              <option value="all">전체</option>
+              {facilities.map(facility => (
+                <option key={facility.id} value={facility.id}>
+                  {facility.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 필터 리셋 버튼 */}
+        <div className="flex justify-end mt-3">
+          <button
+            onClick={() => {
+              setSearchTerm('')
+              setStatusFilter('all')
+              setCategoryFilter('all')
+              setFacilityFilter('all')
+            }}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            필터 초기화
+          </button>
+        </div>
+      </div>
+
       {view === 'list' ? (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">진행중인 대관 / Active Bookings</h2>
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                 {activeBookings.map(b => <BookingListItem key={b.id} booking={b} facilities={facilities} />)}
                 {activeBookings.length === 0 && <p className="text-center text-gray-500 py-10">진행중인 대관 신청이 없습니다.</p>}
               </div>
@@ -432,7 +624,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">완료된 대관 / Completed Bookings</h2>
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                 {completedBookings.map(b => <BookingListItem key={b.id} booking={b} facilities={facilities} />)}
                 {completedBookings.length === 0 && <p className="text-center text-gray-500 py-10">완료된 대관이 없습니다.</p>}
               </div>
@@ -503,7 +695,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
                           booking.status === 'rejected' ? 'bg-red-500' :
                           'bg-gray-500'
                         }`}
-                        title={`${booking.purpose} (${booking.startTime}-${booking.endTime})`}
+                        title={`${booking.userName || '사용자'} - ${booking.purpose} (${booking.startTime}-${booking.endTime})`}
                       >
                         {booking.purpose}
                       </div>
@@ -546,9 +738,15 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">신청자 이름</label>
+              <input type="text" className="w-full p-3 border border-gray-200 rounded-xl" placeholder="신청자 이름을 입력하세요" value={form.userName||''} onChange={e=>setForm({...form, userName: e.target.value})} />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">대관 목적</label>
               <input type="text" className="w-full p-3 border border-gray-200 rounded-xl" value={form.purpose||''} onChange={e=>setForm({...form, purpose: e.target.value})} />
             </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">분류</label>
               <select className="w-full p-3 border border-gray-200 rounded-xl bg-white" value={form.category as any} onChange={e=>setForm({...form, category: e.target.value as any})}>
@@ -558,6 +756,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
                 <option value="class">수업</option>
               </select>
             </div>
+            <div></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -575,7 +774,6 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
                 ))}
               </select>
             </div>
-            <div></div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -587,6 +785,36 @@ const BookingSection: React.FC<BookingSectionProps> = ({ currentUser, bookings, 
               <input type="date" className="w-full p-3 border border-gray-200 rounded-xl" value={form.endDate||''} onChange={e=>setForm({...form, endDate: e.target.value})} />
             </div>
           </div>
+
+          {/* 반복 요일 선택 (AdminSection과 동일한 UI) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">반복 요일 (다중일 선택시)</label>
+            <div className="flex flex-wrap gap-2">
+              {WEEKDAYS_KO.map((d, idx) => (
+                <button key={d} type="button"
+                  onClick={() => setForm(prev => ({
+                    ...prev,
+                    recurrenceRule: {
+                      days: prev.recurrenceRule?.days?.includes(idx)
+                        ? prev.recurrenceRule.days.filter(x => x !== idx)
+                        : [...(prev.recurrenceRule?.days || []), idx]
+                    }
+                  }))}
+                  className={`p-2 rounded-lg border text-sm font-medium ${
+                    form.recurrenceRule?.days?.includes(idx)
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white hover:bg-gray-100 border-gray-300'
+                  } ${!isMultiDay ? 'opacity-50 pointer-events-none' : ''}`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+            {!isMultiDay && (
+              <p className="text-xs text-gray-500 mt-1">* 시작일과 종료일이 다를 때 활성화됩니다</p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">시작 시간</label>

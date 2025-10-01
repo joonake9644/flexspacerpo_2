@@ -214,20 +214,20 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin, 
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-        <div className="flex items-center mb-6">
-          <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center mr-2"><Users className="w-6 h-6 text-white" /></div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-gray-50 to-purple-50 p-4 animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-gray-100 p-8 animate-slide-up">
+        <div className="flex items-center mb-6 animate-fade-in-delay">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-2 shadow-md animate-bounce-in"><Users className="w-6 h-6 text-white" /></div>
           <h1 className="text-2xl font-bold text-gray-900">FlexSpace Pro</h1>
         </div>
 
-        <div className="flex gap-2 mb-6">
-          <button type="button" onClick={()=>setMode('login')} className={`flex-1 py-2 rounded-xl border ${mode==='login'?'bg-blue-50 text-blue-700 border-blue-200':'bg-white'}`}>로그인</button>
-          <button type="button" onClick={()=>setMode('signup')} className={`flex-1 py-2 rounded-xl border ${mode==='signup'?'bg-purple-50 text-purple-700 border-purple-200':'bg-white'}`}>회원가입</button>
-          <button type="button" onClick={()=>setMode('admin_login')} className={`flex-1 py-2 rounded-xl border ${mode==='admin_login'?'bg-green-50 text-green-700 border-green-200':'bg-white'}`}>관리자</button>
+        <div className="flex gap-2 mb-6 animate-fade-in-delay">
+          <button type="button" onClick={()=>setMode('login')} className={`flex-1 py-2 rounded-xl border transition-all duration-300 ${mode==='login'?'bg-blue-50 text-blue-700 border-blue-200 shadow-sm':'bg-white hover:bg-gray-50'}`}>로그인</button>
+          <button type="button" onClick={()=>setMode('signup')} className={`flex-1 py-2 rounded-xl border transition-all duration-300 ${mode==='signup'?'bg-purple-50 text-purple-700 border-purple-200 shadow-sm':'bg-white hover:bg-gray-50'}`}>회원가입</button>
+          <button type="button" onClick={()=>setMode('admin_login')} className={`flex-1 py-2 rounded-xl border transition-all duration-300 ${mode==='admin_login'?'bg-green-50 text-green-700 border-green-200 shadow-sm':'bg-white hover:bg-gray-50'}`}>관리자</button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="animate-fade-in-delay" style={{animationDelay: '0.4s'}}>
           {mode === 'signup' && (
             <>
               <div className="relative mb-4">
@@ -271,7 +271,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin, 
             </>
           )}
 
-          <button type="submit" disabled={submitting} className="w-full py-3 px-4 bg-blue-500 text-white rounded-xl border-2 border-transparent hover:bg-blue-600 hover:border-blue-700 transition-all font-semibold">
+          <button type="submit" disabled={submitting} className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl border-2 border-transparent hover:from-blue-600 hover:to-blue-700 hover:shadow-lg transition-all duration-300 font-semibold transform hover:scale-[1.02]">
             {mode==='login' && '로그인 / Login'}
             {mode==='signup' && '회원가입 / Sign Up'}
             {mode==='admin_login' && '관리자 로그인 / Admin Login'}
@@ -280,7 +280,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin, 
 
         {mode !== 'admin_login' && (
           <>
-            <div className="my-6 flex items-center">
+            <div className="my-6 flex items-center animate-fade-in-delay" style={{animationDelay: '0.5s'}}>
               <div className="flex-1 border-t border-gray-300"></div>
               <span className="px-4 text-sm text-gray-500">또는</span>
               <div className="flex-1 border-t border-gray-300"></div>
@@ -302,7 +302,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSignup, onAdminLogin, 
                 }
               }}
               disabled={submitting}
-              className="w-full py-3 px-4 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all font-medium flex items-center justify-center gap-3"
+              className="w-full py-3 px-4 border border-gray-300 rounded-xl hover:bg-gray-50 hover:shadow-md transition-all duration-300 font-medium flex items-center justify-center gap-3 transform hover:scale-[1.02] animate-fade-in-delay"
+              style={{animationDelay: '0.6s'}}
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

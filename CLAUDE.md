@@ -27,6 +27,14 @@ npm test:e2e:ui              # Run Playwright tests with UI
 npm test:e2e:debug           # Run Playwright tests in debug mode
 ```
 
+### Firebase Functions Deployment
+```bash
+cd functions
+npm run build                # Build TypeScript to JavaScript
+firebase deploy --only functions  # Deploy all functions
+firebase deploy --only functions:autoCompleteBookings  # Deploy specific function
+```
+
 ## Architecture Overview
 
 ### Technology Stack
@@ -185,6 +193,37 @@ VITE_FIREBASE_MEASUREMENT_ID=
 - Time slot validation prevents overlapping reservations
 - Recurring booking support with day-of-week patterns
 - Status workflow: pending → approved/rejected → completed/cancelled
+
+#### Automatic Booking Completion System
+**Implemented: Client-side filtering + Server-side scheduler**
+
+1. **Client-Side Auto-Expiration (Immediate Effect)**
+   - `BookingSection.tsx` and `Dashboard.tsx` automatically filter out expired bookings
+   - Approved bookings past their `endDate` are automatically moved to "Completed" section
+   - No user action required - happens instantly on page load
+   - Pattern: Compare `booking.endDate < today` to exclude from active bookings
+
+2. **Server-Side Scheduler (Firebase Functions)**
+   - `functions/src/scheduled/auto-complete-bookings.ts`
+   - **Schedule**: Runs daily at 2:00 AM (Asia/Seoul timezone)
+   - **Function**: `autoCompleteBookings` - Cron-based pubsub trigger
+   - **Process**:
+     - Queries all `approved` bookings where `endDate <= yesterday`
+     - Batch updates to `status: 'completed'` with `autoCompleted: true` flag
+     - Logs results to `system_logs` collection
+   - **Manual Trigger**: `manualCompleteBookings` HTTP endpoint for admin testing
+
+3. **Deployment**
+   ```bash
+   cd functions
+   npm run build
+   firebase deploy --only functions:autoCompleteBookings
+   ```
+
+4. **Why Both Approaches?**
+   - Client-side: Instant UI update without waiting for server
+   - Server-side: Permanent database updates for historical accuracy
+   - Together: Seamless user experience + clean data state
 
 #### Real-time Features
 - Firestore real-time listeners for live data updates

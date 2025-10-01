@@ -72,17 +72,6 @@ const ProgramListItem: React.FC<{ p: Program; onEdit: (p: Program)=>void; onDele
 export default function AdminSection({ currentUser, bookings, setBookings, applications, setApplications, programs, setPrograms, users, facilities }: AdminSectionProps) {
   const { showNotification } = useNotification()
 
-  // 프로그램 데이터 디버깅
-  console.log('🔍 AdminSection 프로그램 데이터 확인:', {
-    programsCount: programs.length,
-    programs: programs,
-    activePrograms: programs.filter(p => {
-      const today = new Date()
-      const end = new Date(p.endDate)
-      return end >= today
-    }).length
-  })
-
   const [isProgramModalOpen, setIsProgramModalOpen] = useState(false)
   const [programToEdit, setProgramToEdit] = useState<Program | null>(null)
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month')
@@ -96,6 +85,28 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
   const [programForm, setProgramForm] = useState(emptyProgram)
 
   const isMultiDay = useMemo(() => programForm.startDate !== programForm.endDate, [programForm.startDate, programForm.endDate])
+
+  // 진행중 프로그램 필터링 (종료일이 오늘 이후)
+  const activePrograms = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return programs.filter(p => {
+      const endDate = new Date(p.endDate)
+      endDate.setHours(0, 0, 0, 0)
+      return endDate >= today
+    })
+  }, [programs])
+
+  // 종료된 프로그램 필터링 (종료일이 오늘 이전)
+  const completedPrograms = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return programs.filter(p => {
+      const endDate = new Date(p.endDate)
+      endDate.setHours(0, 0, 0, 0)
+      return endDate < today
+    })
+  }, [programs])
 
   const timeOptions = useMemo(() => {
     const arr: string[] = []
@@ -218,11 +229,6 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
 
   const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings])
   const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications])
-  const activePrograms = useMemo(() => programs.filter(p => {
-    const today = new Date()
-    const end = new Date(p.endDate)
-    return end >= today
-  }), [programs])
   const totalUsers = useMemo(() => users.length, [users])
 
   const [newStudentForm, setNewStudentForm] = useState({
@@ -645,11 +651,34 @@ export default function AdminSection({ currentUser, bookings, setBookings, appli
             <PlusCircle className="w-4 h-4"/> 새 프로그램 추가
           </button>
         </div>
-        <div className="space-y-3">
-          {programs.map(p => (
-            <ProgramListItem key={p.id} p={p} onEdit={(pp)=>{ setProgramToEdit(pp); setProgramForm(pp); setIsProgramModalOpen(true) }} onDelete={(pp)=> setPrograms(prev=>prev.filter(x=>x.id!==pp.id))} />
-          ))}
-          {programs.length === 0 && <p className="text-center text-gray-500 py-6">등록된 프로그램이 없습니다.</p>}
+
+        {/* 진행중/종료 프로그램 분리 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 진행중 프로그램 */}
+          <div>
+            <h4 className="text-md font-semibold text-gray-800 mb-3">
+              진행중 프로그램 ({activePrograms.length}개)
+            </h4>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+              {activePrograms.map(p => (
+                <ProgramListItem key={p.id} p={p} onEdit={(pp)=>{ setProgramToEdit(pp); setProgramForm(pp); setIsProgramModalOpen(true) }} onDelete={(pp)=> setPrograms(prev=>prev.filter(x=>x.id!==pp.id))} />
+              ))}
+              {activePrograms.length === 0 && <p className="text-center text-gray-500 py-6">진행중인 프로그램이 없습니다.</p>}
+            </div>
+          </div>
+
+          {/* 종료된 프로그램 */}
+          <div>
+            <h4 className="text-md font-semibold text-gray-800 mb-3">
+              종료된 프로그램 ({completedPrograms.length}개)
+            </h4>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+              {completedPrograms.map(p => (
+                <ProgramListItem key={p.id} p={p} onEdit={(pp)=>{ setProgramToEdit(pp); setProgramForm(pp); setIsProgramModalOpen(true) }} onDelete={(pp)=> setPrograms(prev=>prev.filter(x=>x.id!==pp.id))} />
+              ))}
+              {completedPrograms.length === 0 && <p className="text-center text-gray-500 py-6">종료된 프로그램이 없습니다.</p>}
+            </div>
+          </div>
         </div>
       </div>
 

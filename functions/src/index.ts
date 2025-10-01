@@ -794,3 +794,6 @@ export const initializeAdminClaims = functions.https.onCall(async (data, context
     throw new functions.https.HttpsError('internal', `일괄 설정 중 오류가 발생했습니다: ${error.message}`);
   }
 });
+
+// --- 자동 대관 완료 스케줄러 ---
+export { autoCompleteBookings, manualCompleteBookings } from './scheduled/auto-complete-bookings';

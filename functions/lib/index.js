@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initializeAdminClaims = exports.checkAdminRole = exports.setAdminClaims = exports.onProgramApplicationStatusChange = exports.onBookingStatusChange = exports.createUserByAdmin = exports.updateUserEmail = exports.subscribeToPush = exports.updateReservationStatus = exports.createProgramApplication = exports.createBooking = void 0;
+exports.manualCompleteBookings = exports.autoCompleteBookings = exports.initializeAdminClaims = exports.checkAdminRole = exports.setAdminClaims = exports.onProgramApplicationStatusChange = exports.onBookingStatusChange = exports.createUserByAdmin = exports.updateUserEmail = exports.subscribeToPush = exports.updateReservationStatus = exports.createProgramApplication = exports.createBooking = void 0;
 // 통합 관리 분석 및 리빙랩 솔루션을 위해 정리된 코드 - 슬랙 알림 기능 포함
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
@@ -710,4 +710,8 @@ exports.initializeAdminClaims = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('internal', `일괄 설정 중 오류가 발생했습니다: ${error.message}`);
     }
 });
+// --- 자동 대관 완료 스케줄러 ---
+var auto_complete_bookings_1 = require("./scheduled/auto-complete-bookings");
+Object.defineProperty(exports, "autoCompleteBookings", { enumerable: true, get: function () { return auto_complete_bookings_1.autoCompleteBookings; } });
+Object.defineProperty(exports, "manualCompleteBookings", { enumerable: true, get: function () { return auto_complete_bookings_1.manualCompleteBookings; } });
 //# sourceMappingURL=index.js.map

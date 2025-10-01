@@ -55,13 +55,31 @@ const formatProgramSchedule = (program: Program) => {
 
 const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], applications = [], programs = [], setActiveTab, syncing = false }) => {
   const { users } = useFirestore()
-  const myBookings = useMemo(() => bookings.filter(b => b.userId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()), [bookings, currentUser.id])
+
+  // 🔥 자동 만료 처리: 진행중인 대관만 표시 (종료일이 지난 승인 대관 제외)
+  const activeBookings = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStr = today.toISOString().split('T')[0]
+
+    return bookings.filter(b => {
+      // 완료/취소는 제외
+      if (b.status === 'completed' || b.status === 'cancelled') return false
+
+      // 승인된 대관 중 종료일이 지났으면 제외
+      if (b.status === 'approved' && b.endDate < todayStr) return false
+
+      return true
+    })
+  }, [bookings])
+
+  const myBookings = useMemo(() => activeBookings.filter(b => b.userId === currentUser.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()), [activeBookings, currentUser.id])
   const myApplications = useMemo(() => applications.filter(a => a.userId === currentUser.id).sort((a, b) => {
     const aDate = a.appliedAt?.toDate ? a.appliedAt.toDate() : new Date(a.appliedAt || 0)
     const bDate = b.appliedAt?.toDate ? b.appliedAt.toDate() : new Date(b.appliedAt || 0)
     return bDate.getTime() - aDate.getTime()
   }), [applications, currentUser.id])
-  const pendingBookings = useMemo(() => bookings.filter(b => b.status === 'pending'), [bookings])
+  const pendingBookings = useMemo(() => activeBookings.filter(b => b.status === 'pending'), [activeBookings])
   const pendingApplications = useMemo(() => applications.filter(a => a.status === 'pending'), [applications])
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month')
 
@@ -160,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], appli
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">최근 대관 신청 / Recent Bookings</h3>
           <div className="space-y-4">
-            {(currentUser.role === 'admin' ? bookings.slice(0, 3) : myBookings.slice(0, 3)).map(booking => (
+            {(currentUser.role === 'admin' ? activeBookings.slice(0, 3) : myBookings.slice(0, 3)).map(booking => (
               <div key={booking.id} className="p-4 bg-gray-50 rounded-xl transition-colors duration-200 hover:bg-gray-100 border-l-4 border-blue-500">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -189,11 +207,11 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, bookings = [], appli
                 </div>
               </div>
             ))}
-            {((currentUser.role === 'admin' ? bookings : myBookings).length === 0) && (
+            {((currentUser.role === 'admin' ? activeBookings : myBookings).length === 0) && (
               <p className="text-center text-gray-500 py-8">대관 신청 내역이 없습니다.</p>
             )}
           </div>
-          {(currentUser.role === 'admin' ? bookings : myBookings).length > 3 && (
+          {(currentUser.role === 'admin' ? activeBookings : myBookings).length > 3 && (
             <button onClick={() => setActiveTab('booking')} className="w-full mt-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
               전체 보기
             </button>
